@@ -11,6 +11,9 @@ on:
     tags: ["v*"]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build-installer:
     runs-on: windows-latest
@@ -21,8 +24,31 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build cdrca.exe (release)
+        id: build_cli
         working-directory: cli
-        run: cargo build --release
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          cargo build --release 2>&1 | Tee-Object -FilePath ..\cargo_build_output.log
+          exit $LASTEXITCODE
+
+      - name: Commit build log on failure (self-diagnosing)
+        if: steps.build_cli.outcome == 'failure'
+        shell: pwsh
+        run: |
+          git config user.email "ci@github-actions.local"
+          git config user.name "GitHub Actions CI"
+          git fetch origin ci-debug-logs 2>$null
+          git checkout -B ci-debug-logs
+          Copy-Item cargo_build_output.log "cargo-build-run$env:GITHUB_RUN_NUMBER.log"
+          git add -f "cargo-build-run$env:GITHUB_RUN_NUMBER.log"
+          git commit -m "CI debug log: cargo build failure, run $env:GITHUB_RUN_NUMBER"
+          git push origin ci-debug-logs --force
+
+      - name: Fail the job if the build actually failed
+        if: steps.build_cli.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
 
       - name: Set up Node.js (for packaging the VS Code extension)
         uses: actions/setup-node@v4
