@@ -30,7 +30,7 @@ pub fn clear_token() -> Result<()> {
     let entry = keyring::Entry::new(SERVICE, USER)?;
     match entry.delete_credential() {
         Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e).into(),
+        Err(e) => Err(e).context("deleting token from Windows Credential Manager"),
     }
 }
 

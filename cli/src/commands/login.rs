@@ -36,7 +36,8 @@ pub fn run() -> Result<()> {
 
     println!("Waiting for login to complete...");
     let (mut stream, _) = listener.accept().context("waiting for OAuth callback")?;
-    let mut reader = BufReader::new(&stream.try_clone()?);
+    let stream_clone = stream.try_clone()?;
+    let mut reader = BufReader::new(&stream_clone);
     let mut request_line = String::new();
     reader.read_line(&mut request_line)?;
 
