@@ -84,8 +84,29 @@ jobs:
         shell: pwsh
 
       - name: Compile installer.exe
+        id: compile_installer
+        continue-on-error: true
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\cdrca-installer.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\cdrca-installer.iss 2>&1 | Tee-Object -FilePath iscc_output.log
+          exit $LASTEXITCODE
+        shell: pwsh
+
+      - name: Commit ISCC log on failure (self-diagnosing)
+        if: steps.compile_installer.outcome == 'failure'
+        shell: pwsh
+        run: |
+          git config user.email "ci@github-actions.local"
+          git config user.name "GitHub Actions CI"
+          git fetch origin ci-debug-logs 2>$null
+          git checkout -B ci-debug-logs
+          Copy-Item iscc_output.log "iscc-run$env:GITHUB_RUN_NUMBER.log"
+          git add -f "iscc-run$env:GITHUB_RUN_NUMBER.log"
+          git commit -m "CI debug log: ISCC compile failure, run $env:GITHUB_RUN_NUMBER"
+          git push origin ci-debug-logs --force
+
+      - name: Fail the job if the installer actually failed to compile
+        if: steps.compile_installer.outcome == 'failure'
+        run: exit 1
         shell: pwsh
 
       - name: Upload installer as release asset
