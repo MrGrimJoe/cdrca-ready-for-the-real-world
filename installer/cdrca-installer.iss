@@ -16,7 +16,7 @@
 #define MyAppPublisher "ISLAH"
 
 [Setup]
-AppId={{B9C1B6C1-6E3B-4B7B-9E3E-CDRCA00001}}
+AppId={{1EE14AE9-B830-4DDF-8787-89498C96AF0E}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
