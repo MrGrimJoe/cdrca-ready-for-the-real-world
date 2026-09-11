@@ -244,10 +244,11 @@ end;
 // time (e.g. they plan to install VS Code afterward), tell them exactly
 // where the .vsix ended up and the exact command to run once VS Code is
 // installed — never fail the overall install over this.
-procedure CurStepChanged(CurStep: TSetupStep);
 const
   SHCNE_ASSOCCHANGED = $08000000;
   SHCNF_IDLIST = $0000;
+
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
