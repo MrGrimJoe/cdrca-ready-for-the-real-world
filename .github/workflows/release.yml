@@ -110,6 +110,10 @@ jobs:
         shell: pwsh
 
       - name: Upload installer as release asset
+        # GitHub Releases requires a tag to attach the release to. Manual
+        # workflow_dispatch runs aren't tied to a tag, so only run this step
+        # on actual tag pushes; manual runs still get the artifact below.
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: installer/output/cdrca-installer.exe
