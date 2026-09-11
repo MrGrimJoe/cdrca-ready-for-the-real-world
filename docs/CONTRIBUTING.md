@@ -11,7 +11,11 @@
   `cdrca-installer.exe`.
 - `docs/` — this folder.
 - `.github/workflows/release.yml` — builds the CLI, packages the
-  extension, and compiles the installer on every tagged release.
+  extension, and compiles the installer on every tagged release (`v*`
+  push) or manual `workflow_dispatch` run. A GitHub Release is only
+  created on tag pushes (Releases require a tag to attach to); manual
+  runs skip that step and just upload `cdrca-installer.exe` as a
+  workflow artifact instead.
 
 ## Building locally
 
