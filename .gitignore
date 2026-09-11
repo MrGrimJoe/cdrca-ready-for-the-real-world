@@ -1,0 +1,16 @@
+# Rust build output
+cli/target/
+
+# VS Code extension build output / deps
+extension/node_modules/
+extension/*.vsix
+
+# Installer build output (CI stages these fresh each release; not checked in)
+installer/staged/
+installer/output/
+installer/rustup-init.exe
+
+# Editor/OS cruft
+.vscode/
+.DS_Store
+Thumbs.db

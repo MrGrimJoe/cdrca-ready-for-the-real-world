@@ -1,0 +1,187 @@
+# Architecture
+
+## The pieces, at a glance
+
+```
+                    ┌─────────────────────────┐
+                    │   Registry website        │
+                    │   (built separately,      │
+                    │    Google AI Studio)      │
+                    │                            │
+                    │  GET  /api/packages/:name  │
+                    │  GET  /api/packages/:n/:v  │
+                    │  GET  /api/search          │
+                    │  POST /api/packages        │
+                    │  POST /api/.../releases    │
+                    │  GET  /api/auth/github/... │
+                    └─────────────┬──────────────┘
+                                  │ HTTP (fixed API contract)
+                                  ▼
+┌──────────────┐        ┌──────────────────┐        ┌────────────────────┐
+│  GitHub       │◄───────│   cdrca CLI       │───────►│  Local package      │
+│  (release     │download│   (cli/, Rust)    │        │  store + lockfile   │
+│  assets, npm  │        │                   │        │  %LOCALAPPDATA%\   │
+│  for the      │        │  search/info/     │        │  CDRCA\             │
+│  language     │        │  install/publish/ │        └────────────────────┘
+│  itself)      │        │  create/build/run │
+└──────────────┘        └─────────┬─────────┘
+                                  │ spawns / wraps
+                    ┌─────────────┼─────────────┐
+                    ▼             ▼             ▼
+             ┌───────────┐ ┌───────────┐ ┌──────────────┐
+             │  Tauri     │ │  node     │ │  VS Code      │
+             │  build     │ │  (runs    │ │  extension    │
+             │  pipeline  │ │  CDRCA's  │ │  (extension/) │
+             │  (`build   │ │  server)  │ │  spawns the   │
+             │  app`)     │ │           │ │  same CLI     │
+             └───────────┘ └───────────┘ └──────────────┘
+```
+
+Everything in this repo (`cli/`, `extension/`, `installer/`) is
+**tooling for CDRCA**, not CDRCA itself. The CDRCA language (the actual
+DSL, transpiler, and server) lives in Muhammad Ayyan's separate repo —
+this repo never modifies that upstream source; it only installs and
+patches a *local, per-project copy* of it (see
+[Port patching](#port-patching) below).
+
+## The GitHub-backed install model
+
+The custom package manager (`cdrca search`/`info`/`install`/`update`/
+`publish`) deliberately never shells out to or depends on npm anywhere in
+its resolve/download/cache pipeline. The flow:
+
+1. `cdrca install <name>[@version]` calls the registry API
+   (`GET /api/packages/:name` or `/:name/:version`) to resolve which
+   version to install and get a `githubReleaseAssetUrl`.
+2. The CLI downloads that asset **directly from GitHub** — not through
+   npm, not through any package manager wrapper.
+3. The download is verified against a checksum the registry provided,
+   then extracted into a local, content-addressed store under
+   `%LOCALAPPDATA%\CDRCA\store\<name>\<version>\`.
+4. Installs are transactional: download → verify → extract to a temp
+   directory → atomic rename into the store. A failed or interrupted
+   install can never leave a half-installed package behind.
+5. The project's `cdrca-lock.json` records exactly what was resolved
+   (version, resolved URL, integrity hash, dependencies) for reproducible
+   installs elsewhere.
+
+Dependency version constraints (`^1.2.3`, `>=2.0.0`, exact pins) are
+resolved via the `semver` crate against the registry's reported version
+list — see `cli/src/resolve.rs`.
+
+**One exception to "never npm":** the CDRCA *language runtime itself* is
+a real npm package (it isn't distributed through the ecosystem registry
+the same way libraries/plugins/apps are, and it has no `bin` field). So
+`cdrca create app` and `cdrca install cdrca` do call `npm install`
+specifically to pull the runtime into a project's own `node_modules` —
+this is intentionally separate from, and doesn't touch, the
+GitHub-backed pipeline above.
+
+## Port patching
+
+**The problem:** CDRCA's real server
+(`Back-end/Servers/main/index.js`) hardcodes `const PORT = 3000;` with
+no configurability. Verified directly against the actual source. This
+means:
+
+- A `CDRCA_PORT` env var, if you tried to set one, is silently ignored.
+- Two CDRCA projects can never run at the same time — the second one
+  fails to bind `:3000`.
+
+**Why not just ask for an upstream fix:** deliberately not pursued —
+avoids needing Ayyan's involvement in this tooling project at all.
+
+**Why not a singleton shared server instead:** rejected — it would need
+an equivalent code change anyway (to make CDRCA multi-project-aware
+internally), without the benefit of genuinely independent, simultaneous
+projects.
+
+**The actual fix — patch the local copy, per project:** exactly like a
+tool such as `patch-package`, `cli/src/patch.rs` rewrites *this
+project's own* `node_modules/cdrca/Back-end/Servers/main/index.js` right
+after `npm install cdrca` completes:
+
+```
+const PORT = 3000;
+```
+becomes
+```
+const PORT = process.env.CDRCA_PORT || 3000;
+```
+
+This is:
+- **Local only** — it touches a project's own `node_modules`, never
+  Ayyan's GitHub repo, never a shared/global CDRCA install.
+- **Idempotent** — if the line's already patched (checked by searching
+  for `process.env.CDRCA_PORT`), the patch step is skipped rather than
+  double-patching or failing.
+- **Loud on failure, not silent** — if a future CDRCA version changes
+  that exact line (upstream refactor, or CDRCA adding its own port
+  config), the patch can't find what it expects and prints an unmissable
+  warning rather than pretending it worked. The project falls back to
+  CDRCA's hardcoded 3000, and `cdrca run`/`cdrca build app` both warn
+  about this every time until it's fixed.
+
+**Where the port itself lives:** assigned once, at `cdrca create app` /
+`cdrca install cdrca` time (bind `:0`, read back the OS-assigned port,
+release it), and persisted in `.cdrca-state.json` at the project root —
+deliberately **not** part of `cdrca.json` (see
+[MANIFEST-SPEC.md](./MANIFEST-SPEC.md#whats-not-in-this-file), since
+that's a fixed cross-team contract). `.cdrca-state.json` is gitignored by
+default. `cdrca run` and `cdrca build app` both read this same stored
+port rather than renegotiating one on every invocation, which is what
+makes the patch meaningful in the first place — the port has to be
+*stable* for a project, not re-randomized each run.
+
+## The remaining open gap: server-ready signaling
+
+Separate from the port issue: `Servers.main.init()` still has no clean
+"boot and signal ready" event — no health endpoint, no ready log line
+that's been confirmed. `cdrca build app`'s generated Tauri config and the
+VS Code extension's run button both currently work around this by
+**polling** the (now-known, patched) port until it accepts a connection,
+rather than waiting for an actual readiness signal from CDRCA itself.
+This is a known, flagged limitation — not something silently assumed
+away.
+
+## Authentication
+
+`cdrca login` opens a browser to the registry's GitHub OAuth entry point
+with a `redirect_port` and a randomly generated `state` value, and spins
+up a local callback listener on that port. The callback is rejected
+outright if the returned `state` doesn't match exactly — this exists
+specifically to prevent token injection (without it, *any* connection to
+the local port, not just the real GitHub redirect, could hand the CLI an
+attacker-supplied token). The token itself is stored via Windows
+Credential Manager (the `keyring` crate), not a plaintext file.
+
+**Note:** the exact registry-side contract for this flow
+(`redirect_port`/`state` param names, callback shape) is documented as
+an assumption pending confirmation in `cli/OAUTH-CONTRACT-TODO.md` — not
+yet verified against what the registry team actually implemented.
+
+## VS Code extension bundling
+
+The extension (`extension/`) is not published to the VS Code
+Marketplace — it's built into a `.vsix` at CI time
+(`.github/workflows/release.yml`, via `vsce package`) and offered as an
+optional, selectable component in the Inno Setup installer
+(`installer/cdrca-installer.iss`).
+
+- VS Code's presence is detected by checking its real uninstall registry
+  key (`...\Uninstall\Microsoft Visual Studio Code`) across all four
+  possible locations: `HKLM`/`HKCU` × 32-bit/64-bit registry view, since
+  VS Code commonly installs per-user rather than system-wide.
+- If found, the component is **pre-checked but never hidden** — the
+  option stays visible and selectable either way, in case someone
+  installs VS Code afterward.
+- If selected, the installer runs
+  `<VS Code install location>\bin\code.cmd --install-extension <path-to-vsix>`
+  silently.
+- If selected but VS Code genuinely isn't found at actual install time,
+  the installer doesn't fail — it shows a message with the exact manual
+  install command and the `.vsix`'s permanent on-disk location
+  (`{app}\extension\cdrca-extension.vsix`).
+
+See `extension/README.md` for what the extension itself does once
+installed.

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "CDRCA",
+  "scopeName": "source.cdrca",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#scene-blocks" },
+    { "include": "#plugin-blocks" },
+    { "include": "#directives" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.cdrca", "match": "//.*$" }
+      ]
+    },
+    "scene-blocks": {
+      "patterns": [
+        {
+          "name": "meta.scene-block.cdrca",
+          "match": "^\\s*!---.*---\\s*$",
+          "captures": { "0": { "name": "keyword.control.scene-marker.cdrca" } }
+        }
+      ]
+    },
+    "plugin-blocks": {
+      "patterns": [
+        {
+          "name": "meta.plugin-block.cdrca",
+          "match": "\\bplugin\\s+\\w+\\s+scope\\s+\\w+\\s+trusted\\s+(true|false)\\b",
+          "captures": { "0": { "name": "storage.modifier.plugin.cdrca" } }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.cdrca",
+          "match": "@(requires|syntaxPlugin)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.cdrca",
+          "match": "\\b(use|add|new|action|def|ACTION|as)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.cdrca",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [{ "name": "constant.character.escape.cdrca", "match": "\\\\." }]
+    },
+    "numbers": {
+      "name": "constant.numeric.cdrca",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    }
+  }
+}

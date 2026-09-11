@@ -1,0 +1,42 @@
+[package]
+name = "cdrca"
+version = "0.1.0"
+edition = "2021"
+description = "CLI, package manager, and build tool for the CDRCA animation DSL"
+license = "IOSL"
+
+[[bin]]
+name = "cdrca"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "=4.5.4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "process"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+flate2 = "1"
+tar = "0.4"
+semver = "1"
+anyhow = "1"
+thiserror = "1"
+directories = "5"
+indicatif = "0.17"
+tempfile = "3"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+url = "=2.4.1"
+idna = "=0.5.0"
+hashbrown = "=0.14.5"
+
+# Windows Credential Manager backed token storage
+[target.'cfg(windows)'.dependencies]
+keyring = "3"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

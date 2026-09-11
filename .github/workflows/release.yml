@@ -1,0 +1,76 @@
+name: Build CDRCA Installer
+
+# Runs on every tag push (e.g. v1.2.0) and can be triggered manually.
+# Produces a Windows installer.exe as a GitHub Release asset, bundling the
+# CLI, Rust toolchain, and (optionally, user-selectable at install time)
+# the VS Code extension as a .vsix — this repo doesn't publish the
+# extension to the Marketplace separately, so this .vsix build IS its
+# only distribution path.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (for building the CLI itself)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cdrca.exe (release)
+        working-directory: cli
+        run: cargo build --release
+
+      - name: Set up Node.js (for packaging the VS Code extension)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Package VS Code extension as .vsix
+        working-directory: extension
+        run: |
+          npm install
+          npx @vscode/vsce package --out cdrca-extension.vsix
+        shell: pwsh
+
+      - name: Download rustup-init.exe (bundled INTO the installer for end users)
+        run: |
+          Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe" -OutFile installer/rustup-init.exe
+        shell: pwsh
+
+      - name: Stage installer assets
+        run: |
+          New-Item -ItemType Directory -Force -Path installer/staged
+          Copy-Item cli/target/release/cdrca.exe installer/staged/cdrca.exe
+          Copy-Item installer/rustup-init.exe installer/staged/rustup-init.exe
+          Copy-Item cli/src/templates/assets/cdrca-logo.png installer/staged/cdrca-logo.png
+          Copy-Item installer/assets/cdrca.ico installer/staged/cdrca.ico
+          Copy-Item installer/assets/wizard-image.png installer/staged/wizard-image.png
+          Copy-Item installer/assets/wizard-small-image.png installer/staged/wizard-small-image.png
+          Copy-Item extension/cdrca-extension.vsix installer/staged/cdrca-extension.vsix
+        shell: pwsh
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+        shell: pwsh
+
+      - name: Compile installer.exe
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\cdrca-installer.iss
+        shell: pwsh
+
+      - name: Upload installer as release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/output/cdrca-installer.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifact (also available on non-tag manual runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdrca-installer
+          path: installer/output/cdrca-installer.exe

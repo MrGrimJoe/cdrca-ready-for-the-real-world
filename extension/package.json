@@ -1,0 +1,66 @@
+{
+  "name": "cdrca-vscode",
+  "displayName": "CDRCA",
+  "description": "Language support, project scaffolding, and a run button for CDRCA animation projects.",
+  "version": "0.1.0",
+  "publisher": "islah",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Other"],
+  "activationEvents": [
+    "workspaceContains:cdrca.json",
+    "onLanguage:cdrca"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "cdrca",
+        "aliases": ["CDRCA"],
+        "extensions": [".cdrca"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cdrca",
+        "scopeName": "source.cdrca",
+        "path": "./syntaxes/cdrca.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "cdrca.createProject",
+        "title": "CDRCA: Create New Project"
+      },
+      {
+        "command": "cdrca.runFile",
+        "title": "CDRCA: Run",
+        "icon": "$(play)"
+      },
+      {
+        "command": "cdrca.stopFile",
+        "title": "CDRCA: Stop",
+        "icon": "$(debug-stop)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "cdrca.runFile",
+          "when": "resourceExtname == .cdrca",
+          "group": "navigation"
+        },
+        {
+          "command": "cdrca.stopFile",
+          "when": "resourceExtname == .cdrca",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        { "command": "cdrca.createProject" },
+        { "command": "cdrca.runFile", "when": "resourceExtname == .cdrca" },
+        { "command": "cdrca.stopFile", "when": "resourceExtname == .cdrca" }
+      ]
+    }
+  }
+}

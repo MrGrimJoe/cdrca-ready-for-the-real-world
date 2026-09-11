@@ -1,0 +1,5 @@
+!--- SCENE Main :: Bouncing balls demo ---
+use ObjectAnimationSystem_INS.CORE_3d_PROPSsceneSYS.exampleProps.BouncingSphereProp() as ball1
+add new action bounce1 2000 500
+def ACTION bounce1 ball1 modifyMesh ""
+!---END---
