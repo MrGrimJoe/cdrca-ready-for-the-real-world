@@ -1,0 +1,67 @@
+Inno Setup 6 Command-Line Compiler
+Copyright (C) 1997-2026 Jordan Russell. All rights reserved.
+Portions Copyright (C) 2000-2026 Martijn Laan. All rights reserved.
+Portions Copyright (C) 2001-2004 Alex Yackimoff. All rights reserved.
+https://www.innosetup.com
+
+Compiler engine version: Inno Setup 6.7.1
+Non-commercial use only
+
+Preprocessing
+   Reading file: C:\Program Files (x86)\Inno Setup 6\ISPPBuiltins.iss
+Parsing [Setup] section, line 19
+Parsing [Setup] section, line 20
+Parsing [Setup] section, line 21
+Parsing [Setup] section, line 22
+Parsing [Setup] section, line 23
+Parsing [Setup] section, line 24
+Parsing [Setup] section, line 25
+Parsing [Setup] section, line 26
+Parsing [Setup] section, line 27
+Parsing [Setup] section, line 28
+Parsing [Setup] section, line 29
+Parsing [Setup] section, line 30
+Parsing [Setup] section, line 34
+Parsing [Setup] section, line 35
+Parsing [Setup] section, line 38
+Parsing [Setup] section, line 39
+Creating output directory: D:\a\cdrca-ready-for-the-real-world\cdrca-ready-for-the-real-world\installer\output
+Reading file (WizardImageFile)
+   Reading file: D:\a\cdrca-ready-for-the-real-world\cdrca-ready-for-the-real-world\installer\staged\wizard-image.png
+Reading file (WizardSmallImageFile)
+   Reading file: D:\a\cdrca-ready-for-the-real-world\cdrca-ready-for-the-real-world\installer\staged\wizard-small-image.png
+Preparing Setup program executable
+   Verification successful
+   Updating icons (Setup.e32)
+   Updating version info (Setup.e32)
+Determining language code pages
+   Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+   Messages in script file
+Reading default messages from Default.isl
+Parsing [LangOptions], [Messages], and [CustomMessages] sections
+   Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+   Messages in script file
+Reading [Code] section
+Parsing [Types] section, line 48
+Parsing [Types] section, line 49
+Parsing [Components] section, line 52
+Parsing [Components] section, line 53
+Parsing [Icons] section, line 77
+Parsing [Icons] section, line 79
+Parsing [Registry] section, line 84
+Parsing [Registry] section, line 95
+Parsing [Registry] section, line 97
+Parsing [Registry] section, line 99
+Parsing [Run] section, line 106
+Parsing [Run] section, line 113
+Parsing [Run] section, line 123
+Parsing [Files] section, line 56
+Parsing [Files] section, line 57
+Parsing [Files] section, line 62
+Parsing [Files] section, line 63
+   Reading version info: D:\a\cdrca-ready-for-the-real-world\cdrca-ready-for-the-real-world\installer\staged\rustup-init.exe
+Parsing [Files] section, line 69
+Compiling [Code] section
+Error on line 248 in D:\a\cdrca-ready-for-the-real-world\cdrca-ready-for-the-real-world\installer\cdrca-installer.iss: Column 1:
+'BEGIN' expected.
+Compile aborted.
