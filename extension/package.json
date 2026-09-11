@@ -4,6 +4,10 @@
   "description": "Language support, project scaffolding, and a run button for CDRCA animation projects.",
   "version": "0.1.0",
   "publisher": "islah",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world.git"
+  },
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages", "Other"],
   "activationEvents": [
