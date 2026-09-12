@@ -60,8 +60,11 @@ cdrca install mathcore@3.1.0
 **Special case:** `cdrca install cdrca` (i.e. the language runtime
 itself, not an ecosystem package) doesn't go through the registry at
 all — the runtime is a real npm package, so this installs/updates it via
-npm directly into the current project and re-applies the port patch (see
-[ARCHITECTURE.md](./ARCHITECTURE.md#port-patching)).
+npm directly into the current project, re-applies the port patch (see
+[ARCHITECTURE.md](./ARCHITECTURE.md#port-patching)), and re-stages Quark,
+the built-in UI directive plugin (see
+[ARCHITECTURE.md](./ARCHITECTURE.md#quark-ui-directive-patching) and
+[QUARK.md](./QUARK.md)).
 
 ```
 cdrca install cdrca@latest
@@ -93,6 +96,13 @@ Lists every package installed in the local store (`%LOCALAPPDATA%\CDRCA\store\`)
 cdrca list
 ```
 
+Add `--json` for machine-readable output (e.g. for scripting or editor
+integrations):
+
+```
+cdrca list --json
+```
+
 ## `cdrca outdated`
 
 Compares the current project's lockfile against the registry's latest
@@ -100,6 +110,12 @@ versions.
 
 ```
 cdrca outdated
+```
+
+Add `--json` for machine-readable output:
+
+```
+cdrca outdated --json
 ```
 
 ## `cdrca publish`
@@ -119,11 +135,14 @@ Scaffolds a full CDRCA app project in a new `<name>/` directory:
 `cdrca.json`, a `.gitignore` (excludes `node_modules/`,
 `.cdrca-state.json`, `.cdrca-build/`), the default CDRCA logo as its icon, a starter
 `.cdrca` scene file, and — critically — actually installs the CDRCA
-language runtime into the project via `npm install cdrca` and patches it
-so the project gets its own stable port (see ARCHITECTURE.md). Name is a
-required argument here; there's no interactive prompt in this terminal
-path (the VS Code extension's Command Palette version of this *does*
-prompt — see `extension/README.md`).
+language runtime into the project via `npm install cdrca`, patches it so
+the project gets its own stable port, and stages Quark, the built-in
+`@sidebar ...` UI directive plugin (see ARCHITECTURE.md and
+[QUARK.md](./QUARK.md) — Quark is staged but may not be active yet
+depending on your CDRCA copy's version, see the warning it prints). Name
+is a required argument here; there's no interactive prompt in this
+terminal path (the VS Code extension's Command Palette version of this
+*does* prompt — see `extension/README.md`).
 
 ```
 cdrca create app my-animation
@@ -153,3 +172,24 @@ cdrca build app
 ```
 
 Output lands under `target/release/bundle/` inside the project.
+
+## `cdrca doctor`
+
+Runs a read-only diagnostic sweep of your local environment: cdrca CLI
+version, Rust toolchain, Tauri CLI (needed for `cdrca build app`),
+whether you're logged in, whether the registry is reachable, local
+package store health (including leftover `.tmp-*` dirs from an
+interrupted install), and whether VS Code plus the CDRCA extension are
+detected. If run inside a project directory, it also reports the
+project's assigned port and whether the port patch was applied
+successfully (see
+[ARCHITECTURE.md](./ARCHITECTURE.md#port-patching)).
+
+```
+cdrca doctor
+```
+
+Every check is independent and best-effort — one failing check never
+stops the rest from running. Nothing here modifies your environment;
+it only reports on it. Exits with a summary count of items that may
+need attention, or "Everything checks out." if there's nothing to flag.

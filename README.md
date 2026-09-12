@@ -37,6 +37,13 @@ language's own syntax grammar (`extension/syntaxes/cdrca.tmLanguage.json`):
   hooking into the transpiler pipeline. See
   [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md) for what a
   plugin is allowed to do and how the CLI surfaces that to you.
+- This tooling also ships **Quark**, a built-in library of prebuilt UI
+  components applied with a one-line directive —
+  `@sidebar sidebar.closable.edgy = value` — instead of hand-coding the
+  component. Every `cdrca create app` / `cdrca install cdrca` stages it
+  into your project automatically. See [docs/QUARK.md](./docs/QUARK.md)
+  — including an important current caveat about what's actually active
+  yet.
 
 This repo's job is everything *around* that language: scaffolding
 projects, installing packages/plugins written in it, running them, and
@@ -130,6 +137,7 @@ you know what exists.
 | `cdrca create app <name>` | Scaffolds a new CDRCA app project, end to end. |
 | `cdrca run` | Runs the current project's CDRCA server directly. |
 | `cdrca build app` | Packages the current project into a distributable Windows `.exe`. |
+| `cdrca doctor` | Diagnoses your local toolchain, login, registry, and store setup. |
 
 ## VS Code extension, at a glance
 
@@ -143,6 +151,9 @@ Full details in [extension/README.md](./extension/README.md).
   beside your editor. A stop button (■) tears it down.
 - Requires the `cdrca` CLI already on PATH, and only activates inside an
   actual CDRCA project or when a `.cdrca` file is open.
+- Optional **CDRCA Icons** file icon theme for branded `.cdrca` icons in
+  the Explorer — opt-in via *Preferences: File Icon Theme*, since it
+  replaces rather than layers onto your existing icon theme.
 - Not on the VS Code Marketplace — install it via the main installer, or
   package it yourself from `extension/` (see its README).
 
@@ -160,18 +171,26 @@ worth knowing before you dig in:
   port until it accepts a connection, rather than waiting for a real
   "ready" event — see
   [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md#the-remaining-open-gap-server-ready-signaling).
-- **`.cdrca` files get a real icon in Explorer, but a generic one in VS
-  Code.** The Windows installer sets up a proper file-type icon; VS
-  Code's file icon for `.cdrca` is still whatever your active icon theme
-  falls back to for unrecognized languages — see the note in
-  [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) for why that wasn't
-  addressed here.
+- **`.cdrca` files get a real icon in Explorer, and now an optional
+  branded one in VS Code too**, via the extension's opt-in **CDRCA
+  Icons** file icon theme — see
+  [extension/README.md#file-icons](./extension/README.md#file-icons)
+  for why it's a separate theme you switch to rather than something
+  blended into your existing one.
 - **The manifest-level plugin permission model (`uses`) and CDRCA's
   in-DSL plugin syntax haven't been fully reconciled** — see
   [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md).
+- **Quark (the built-in `@sidebar ...` UI directive plugin) is staged
+  into every project but isn't active yet** — it depends on a
+  plugin-hook system that exists on CDRCA's GitHub `main` branch but
+  hasn't reached the published npm package. Verified directly, not
+  assumed — see [docs/QUARK.md](./docs/QUARK.md).
 
 None of these block normal use of `cdrca create app` / `run` / `build
-app` day to day — they're the honest list of what's still settling.
+app` day to day — they're the honest list of what's still settling. Run
+`cdrca doctor` any time to check your own setup against the things that
+can actually go wrong locally (toolchain, login, registry reachability,
+local store health).
 
 ## Documentation
 
@@ -184,6 +203,9 @@ app` day to day — they're the honest list of what's still settling.
   subcommand, with examples.
 - [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md) — the
   permissions/`uses` model for plugin-type packages.
+- [docs/QUARK.md](./docs/QUARK.md) — the built-in `@directive` UI plugin:
+  syntax, presets/modifiers, how it's wired in, and its current
+  not-active-yet status.
 - [docs/LICENSING.md](./docs/LICENSING.md) — this repo's license status,
   and a note on IOSLF, a broader license framework separately published
   by CDRCA's creator.

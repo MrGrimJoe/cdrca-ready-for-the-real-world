@@ -26,7 +26,9 @@ cargo build --release
 ```
 Requires a reasonably current stable Rust toolchain — some transitive
 dependencies require newer Cargo than very old distro-packaged Rust
-provides.
+provides. Run `cdrca doctor` after building to sanity-check your
+toolchain, login state, and local package store in one pass — see
+[docs/CLI-COMMANDS.md#cdrca-doctor](./CLI-COMMANDS.md#cdrca-doctor).
 
 **Extension:**
 ```
@@ -67,13 +69,18 @@ and should not be redesigned unilaterally:
 - The manifest-level `uses` permission model and CDRCA's in-DSL
   `@requires`/`plugin { ... }` syntax haven't been fully reconciled —
   see [docs/PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md).
-- **`.cdrca` files show VS Code's generic file icon, not a CDRCA-branded
-  one.** Deliberately not fixed in this pass: VS Code has no way for an
-  extension to add "just one" file icon to whatever theme the user has
-  active — contributing a `fileIconTheme` means defining icons for every
-  file type, or every file *without* a rule loses its icon entirely when
-  a user selects it. A single-language extension shipping a full icon
-  theme is a known anti-pattern for exactly that reason. If this is
-  worth doing properly, it likely means a from-scratch icon theme
-  (covering common file types, not just `.cdrca`) as its own separate
-  effort, not a quick addition here.
+- **Quark, the built-in `@sidebar ...` UI directive plugin
+  (`cli/src/quark_patch.rs`), is staged into every project but isn't
+  active yet** — verified directly against the published npm `cdrca`
+  package, which doesn't yet contain the plugin-hook system it depends
+  on. See [docs/QUARK.md](./QUARK.md).
+- **`.cdrca` files now get a CDRCA-branded icon in VS Code, via a small
+  opt-in File Icon Theme** (`extension/icons/theme/`), not by hooking
+  into whatever icon theme the user already has active — VS Code has no
+  API for "just add one icon" to an existing theme. Selecting **CDRCA
+  Icons** (Command Palette → *Preferences: File Icon Theme*) replaces
+  the user's current icon theme with this one, which is a real tradeoff:
+  it only ships generic file/folder icons plus the CDRCA-specific one,
+  not full coverage of every language extension the way something like
+  Material Icon Theme has. That's an intentional, minimal scope — see
+  `extension/README.md#file-icons`.

@@ -26,6 +26,29 @@ animation projects, directly inside VS Code.
   live preview in a VS Code webview panel beside your editor. A stop
   button (■) tears the process down.
 
+## File icons
+
+The extension contributes an optional **File Icon Theme** called
+**CDRCA Icons** (`icons/theme/cdrca-icon-theme.json`) that gives
+`.cdrca` files a branded icon in the Explorer, editor tabs, and
+breadcrumbs.
+
+This is opt-in and separate from whatever icon theme you already use —
+VS Code has no API for an extension to add "just one" icon to an
+existing theme (see the note in
+[docs/CONTRIBUTING.md](../docs/CONTRIBUTING.md)). Selecting **CDRCA
+Icons** *replaces* your current icon theme rather than layering on top
+of it. To enable it: **Ctrl+Shift+P** → *Preferences: File Icon Theme*
+→ **CDRCA Icons**.
+
+Because of that tradeoff, this theme is intentionally minimal: it ships
+a generic file icon, a generic folder icon (open/closed), and the
+CDRCA-specific one for `.cdrca` — not full per-language coverage the
+way a general-purpose icon theme (e.g. Material Icon Theme) has. If you
+rely on per-language icons for other file types, you may prefer to
+switch back to your usual theme when you're not focused on a CDRCA
+project.
+
 ## Requirements
 
 - The `cdrca` CLI must already be on PATH (installed via the main CDRCA

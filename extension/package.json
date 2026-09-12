@@ -65,6 +65,13 @@
         { "command": "cdrca.runFile", "when": "resourceExtname == .cdrca" },
         { "command": "cdrca.stopFile", "when": "resourceExtname == .cdrca" }
       ]
-    }
+    },
+    "iconThemes": [
+      {
+        "id": "cdrca-icons",
+        "label": "CDRCA Icons",
+        "path": "./icons/theme/cdrca-icon-theme.json"
+      }
+    ]
   }
 }

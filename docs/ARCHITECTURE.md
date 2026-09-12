@@ -133,6 +133,43 @@ port rather than renegotiating one on every invocation, which is what
 makes the patch meaningful in the first place — the port has to be
 *stable* for a project, not re-randomized each run.
 
+## Quark UI directive patching
+
+Same category of local, per-project patch as port patching above, applied
+right after it in `cdrca create app` / `cdrca install cdrca` — but staging
+a *built-in* plugin (`quark`) into a project's `node_modules/cdrca` copy
+rather than rewriting an existing line. Quark lets `.cdrca` files apply
+prebuilt UI components to real DOM elements with a one-line directive
+(`@sidebar sidebar.closable.edgy = value`) instead of hand-coding them.
+Full syntax, preset/modifier reference, and how the directive resolves to
+a `JS_BLOCK` AST node are in [QUARK.md](./QUARK.md) — this section is
+just where it sits in the overall install flow and why.
+
+**Why built-in rather than an ecosystem plugin:** distributing it through
+the registry (like any other `type: "plugin"` package — see
+[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md)) would mean a
+`cdrca.json` dependency entry, an install-time `y/N` confirmation prompt,
+and depending on the registry being reachable. None of that fits a
+component library meant to be available in every project by default —
+so `cli/src/quark_patch.rs` bundles Quark's two files directly into the
+compiled CLI binary (`include_str!`) and writes them out itself, the same
+way the installer bundles the Rust toolchain rather than fetching it
+per-project.
+
+**Current important caveat, verified directly (not assumed):** installing
+the real npm `cdrca` package and running an `@sidebar ...` directive
+through its actual transpiler throws `Unexpected token at position 0: @`.
+The plugin-hook system Quark depends on
+(`Back-end/Transpiler/plugin.js`, `pluginAPI` wired into `Parser.js`)
+exists on CDRCA's GitHub `main` branch but is **not in the currently
+published npm package**, even though the version string matches. The
+patch stages Quark's files and `plugins.json` entry regardless (harmless
+— they just sit inert until a project's CDRCA copy catches up), but
+reports `QuarkPatchOutcome::PluginSystemNotPresent` rather than a plain
+success, and `cdrca doctor` surfaces the same thing. See
+[QUARK.md](./QUARK.md#-current-status-not-active-yet) for the up-to-date
+status.
+
 ## The remaining open gap: server-ready signaling
 
 Separate from the port issue: `Servers.main.init()` still has no clean

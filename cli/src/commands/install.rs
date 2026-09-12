@@ -6,6 +6,7 @@ use crate::lockfile::{Lockfile, LockedPackage};
 use crate::manifest::PackageType;
 use crate::patch;
 use crate::project_state::ProjectState;
+use crate::quark_patch;
 use crate::registry::RegistryClient;
 use crate::store::Store;
 
@@ -98,9 +99,17 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
     let outcome = patch::patch_port(project_root)?;
     patch::report_outcome(&outcome);
 
+    // Re-stage Quark too — same reasoning as the port patch: a version
+    // bump could be exactly what brings in the plugin-hook system Quark
+    // depends on (see quark_patch.rs), so this always re-checks rather
+    // than trusting a previously-recorded state.
+    let quark_outcome = quark_patch::patch_quark(project_root)?;
+    quark_patch::report_quark_outcome(&quark_outcome);
+
     let mut state = ProjectState::load_or_default(project_root)?;
     state.ensure_port()?;
     state.port_patch_applied = outcome.is_ok();
+    state.quark_patch_applied = quark_outcome.is_ok();
     state.save(project_root)?;
 
     println!("CDRCA runtime updated.");

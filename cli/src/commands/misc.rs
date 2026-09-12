@@ -44,9 +44,17 @@ pub async fn info(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list() -> Result<()> {
+pub fn list(json: bool) -> Result<()> {
     let store = Store::open()?;
     let installed = store.list_installed()?;
+    if json {
+        let entries: Vec<_> = installed
+            .iter()
+            .map(|(name, version)| serde_json::json!({ "name": name, "version": version }))
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+        return Ok(());
+    }
     if installed.is_empty() {
         println!("No packages installed.");
         return Ok(());
@@ -57,19 +65,32 @@ pub fn list() -> Result<()> {
     Ok(())
 }
 
-pub async fn outdated(project_root: &Path) -> Result<()> {
+pub async fn outdated(project_root: &Path, json: bool) -> Result<()> {
     let lock = Lockfile::load_or_default(project_root)?;
     let client = RegistryClient::new(crate::auth::load_token()?);
-    let mut any = false;
+    let mut stale = Vec::new();
     for (name, locked) in &lock.packages {
         let info = client.package_info(name).await?;
         if info.latest_version != locked.version {
-            any = true;
-            println!("{name}: {} -> {}", locked.version, info.latest_version);
+            stale.push((name.clone(), locked.version.clone(), info.latest_version));
         }
     }
-    if !any {
+    if json {
+        let entries: Vec<_> = stale
+            .iter()
+            .map(|(name, current, latest)| {
+                serde_json::json!({ "name": name, "current": current, "latest": latest })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+        return Ok(());
+    }
+    if stale.is_empty() {
         println!("Everything is up to date.");
+    } else {
+        for (name, current, latest) in stale {
+            println!("{name}: {current} -> {latest}");
+        }
     }
     Ok(())
 }

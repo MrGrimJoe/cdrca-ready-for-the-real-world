@@ -19,6 +19,12 @@ pub struct ProjectState {
     /// `port` may still be set, but CDRCA_PORT is silently ignored by the
     /// unpatched server and it falls back to its hardcoded 3000.
     pub port_patch_applied: bool,
+    /// Whether quark_patch::patch_quark() reported a fully active state
+    /// (QuarkPatchOutcome::is_ok()) for this project. False covers both
+    /// "not staged" (npm install cdrca hasn't run) and "staged but inert"
+    /// (this project's local CDRCA copy predates the plugin-hook system)
+    /// — either way, `@sidebar ...`-style directives won't work yet.
+    pub quark_patch_applied: bool,
 }
 
 impl ProjectState {

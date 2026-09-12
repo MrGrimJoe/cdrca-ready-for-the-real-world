@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::manifest::{Manifest, PackageType};
 use crate::patch::{self, PatchOutcome};
 use crate::project_state::ProjectState;
+use crate::quark_patch::{self, QuarkPatchOutcome};
 
 const STARTER_CDRCA: &str = include_str!("../templates/starter.cdrca");
 const DEFAULT_LOGO: &[u8] = include_bytes!("../templates/assets/cdrca-logo.png");
@@ -66,6 +67,14 @@ pub fn run(name: &str) -> Result<()> {
     let outcome = patch::patch_port(root)?;
     patch::report_outcome(&outcome);
 
+    // Installs Quark — the built-in `@id preset.mod.mod = value` UI
+    // directive plugin — into this project's own local CDRCA copy.
+    // Built-in by design: no cdrca.json dependency entry, no registry
+    // involvement, no install-time confirmation prompt. See
+    // quark_patch.rs for why, and for the current-npm-package caveat.
+    let quark_outcome = quark_patch::patch_quark(root)?;
+    quark_patch::report_quark_outcome(&quark_outcome);
+
     // Bake in the port this project will use for the lifetime of the
     // project (not renegotiated on every `cdrca run`), and record whether
     // the patch actually took — 'cdrca run'/'cdrca build app' both read
@@ -73,6 +82,7 @@ pub fn run(name: &str) -> Result<()> {
     let mut state = ProjectState::default();
     let port = state.ensure_port()?;
     state.port_patch_applied = outcome.is_ok();
+    state.quark_patch_applied = quark_outcome.is_ok();
     state.save(root)?;
 
     println!("Created CDRCA app '{name}' in ./{name}");
@@ -83,6 +93,12 @@ pub fn run(name: &str) -> Result<()> {
     println!("  {name}/.cdrca-state.json   (assigned port: {port})");
     if !matches!(outcome, PatchOutcome::AlreadyPatched | PatchOutcome::Applied) {
         println!("  (see warning above — this project will fall back to CDRCA's default port 3000)");
+    }
+    if !matches!(
+        quark_outcome,
+        QuarkPatchOutcome::AlreadyPatched | QuarkPatchOutcome::Applied
+    ) {
+        println!("  (see warning above — @sidebar-style Quark directives won't work yet)");
     }
     println!("\nNext: cd {name} && cdrca build app");
     Ok(())

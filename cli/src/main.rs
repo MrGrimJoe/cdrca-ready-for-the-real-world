@@ -5,6 +5,7 @@ mod manifest;
 mod npm;
 mod patch;
 mod project_state;
+mod quark_patch;
 mod registry;
 mod resolve;
 mod store;
@@ -35,9 +36,17 @@ enum Command {
     /// Remove an installed package
     Remove { package: String },
     /// List installed packages
-    List,
+    List {
+        /// Print machine-readable JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
     /// Show installed vs. latest available versions
-    Outdated,
+    Outdated {
+        /// Print machine-readable JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
     /// Validate cdrca.json and publish a new release
     Publish,
     /// Scaffold a new project
@@ -52,6 +61,9 @@ enum Command {
     },
     /// Launch the current project's CDRCA server on an OS-assigned port
     Run,
+    /// Diagnose your local CDRCA environment: toolchain, login, registry
+    /// reachability, local package store health, and VS Code setup
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -79,8 +91,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Install { spec } => commands::install::run(&spec, &cwd).await?,
         Command::Update { package } => commands::misc::update(&cwd, package.as_deref()).await?,
         Command::Remove { package } => commands::misc::remove(&cwd, &package)?,
-        Command::List => commands::misc::list()?,
-        Command::Outdated => commands::misc::outdated(&cwd).await?,
+        Command::List { json } => commands::misc::list(json)?,
+        Command::Outdated { json } => commands::misc::outdated(&cwd, json).await?,
         Command::Publish => commands::publish::run(&cwd).await?,
         Command::Create { what } => match what {
             CreateTarget::App { name } => commands::create::run(&name)?,
@@ -89,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
             BuildTarget::App => commands::build::run(&cwd)?,
         },
         Command::Run => commands::run::run(&cwd)?,
+        Command::Doctor => commands::doctor::run(&cwd).await?,
     }
 
     Ok(())
