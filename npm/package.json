@@ -1,0 +1,38 @@
+{
+  "name": "cdrca12",
+  "version": "0.1.0",
+  "description": "CLI wrapper for CDRCA tooling -- downloads the prebuilt cdrca.exe from GitHub Releases on install. Windows only for now.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "author": {
+    "name": "MrMIB"
+  },
+  "homepage": "https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world/issues"
+  },
+  "keywords": [
+    "cdrca",
+    "cli"
+  ],
+  "bin": {
+    "cdrca12": "bin/cdrca.js"
+  },
+  "files": [
+    "bin/",
+    "install.js",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
