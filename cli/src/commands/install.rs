@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::lockfile::{Lockfile, LockedPackage};
 use crate::manifest::PackageType;
 use crate::patch;
+use crate::cdrca_bundle;
 use crate::project_state::ProjectState;
 use crate::quark_patch;
 use crate::registry::RegistryClient;
@@ -92,6 +93,8 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
         bail!("npm install {spec} failed with status {status}");
     }
 
+    ensure_working_runtime(project_root)?;
+
     // Re-apply the port patch — idempotent, so this is safe whether or not
     // it was already applied. A version bump could plausibly change the
     // exact source line, so this is not skipped just because a previous
@@ -106,6 +109,12 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
     let quark_outcome = quark_patch::patch_quark(project_root)?;
     quark_patch::report_quark_outcome(&quark_outcome);
 
+    // Re-scan for @useLib directives on every install too — this is the
+    // command a user re-runs after adding a new @useLib line to pick up
+    // a library they didn't need before.
+    let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(project_root)?;
+    quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
+
     let mut state = ProjectState::load_or_default(project_root)?;
     state.ensure_port()?;
     state.port_patch_applied = outcome.is_ok();
@@ -113,6 +122,50 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
     state.save(project_root)?;
 
     println!("CDRCA runtime updated.");
+    Ok(())
+}
+
+/// After `npm install cdrca` completes, checks whether the installed copy
+/// actually has the plugin-hook system Quark (and any future plugin)
+/// depends on. As of this CLI version, the published npm package does
+/// NOT — confirmed directly by running a real transpile against it, not
+/// assumed — so this falls back to writing this CLI's own bundled, fixed
+/// copy of CDRCA over the npm-installed one, then runs a plain
+/// `npm install` inside it to pull in that bundled copy's own
+/// express/prettier/vm dependencies (the npm-installed copy already has
+/// these from the first `npm install cdrca` above in most cases, but this
+/// is run regardless since the bundled package.json is the source of
+/// truth for what this exact copy needs).
+///
+/// This is the same category of decision as `patch.rs`'s port patch and
+/// `quark_patch.rs`'s Quark patch — a local, per-project fix for a gap in
+/// the published package — just larger in scope, since the gap here is a
+/// whole missing subsystem rather than one line.
+pub fn ensure_working_runtime(project_root: &Path) -> Result<()> {
+    if cdrca_bundle::installed_copy_has_plugin_system(project_root) {
+        return Ok(());
+    }
+
+    eprintln!();
+    eprintln!("*** The published npm 'cdrca' package is missing the plugin-hook system ***");
+    eprintln!(
+        "(Back-end/Transpiler/plugin.js) that Quark and other built-in plugins depend on. \
+         Falling back to this CLI's own bundled, fixed copy of CDRCA instead — see \
+         cli/src/cdrca_bundle.rs for exactly what's fixed and why."
+    );
+    eprintln!();
+
+    cdrca_bundle::write_bundled_runtime(project_root)
+        .context("writing bundled CDRCA runtime")?;
+
+    let cdrca_dir = project_root.join("node_modules/cdrca");
+    let status = crate::npm::install_dependencies(&cdrca_dir)
+        .context("installing bundled runtime's dependencies")?;
+    if !status.success() {
+        bail!("npm install (bundled CDRCA runtime dependencies) failed with status {status}");
+    }
+
+    println!("Installed the bundled CDRCA runtime (with the plugin-hook system Quark needs).");
     Ok(())
 }
 

@@ -6,8 +6,8 @@ GitHub through the registry. This is CDRCA's real, existing plugin
 security model (from CDRCA's own `plugin.js`) — the CLI surfaces it, it
 doesn't invent it.
 
-**Not what this page is about:** Quark, the built-in `@sidebar ...` UI
-directive plugin, uses this exact same underlying hook mechanism
+**Not what this page is about:** Quark, the built-in `@directive` UI
+component layer (e.g. `@mainNav navbar.glass`), uses this exact same underlying hook mechanism
 (`uses: [["syntax","customRule"]]`, `permissions: []`) but ships bundled
 with the CLI itself rather than through the registry — no `cdrca.json`
 entry, no confirmation prompt below. See [QUARK.md](./QUARK.md).

@@ -24,3 +24,16 @@ pub fn install_or_update(project_root: &Path, spec: &str) -> Result<ExitStatus> 
         .status()
         .with_context(|| format!("running npm install {spec}"))
 }
+
+/// Plain `npm install` with no package spec — installs whatever
+/// `package.json` in `dir` already declares. Used after
+/// `cdrca_bundle::write_bundled_runtime()` writes out the bundled
+/// runtime's own `package.json` (express/prettier/vm), since that step
+/// only writes files — it never fetches dependencies itself.
+pub fn install_dependencies(dir: &Path) -> Result<ExitStatus> {
+    std::process::Command::new(npm_program())
+        .arg("install")
+        .current_dir(dir)
+        .status()
+        .with_context(|| format!("running npm install in {}", dir.display()))
+}

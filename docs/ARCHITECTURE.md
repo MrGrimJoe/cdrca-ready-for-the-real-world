@@ -133,17 +133,50 @@ port rather than renegotiating one on every invocation, which is what
 makes the patch meaningful in the first place — the port has to be
 *stable* for a project, not re-randomized each run.
 
+## Bundled CDRCA runtime fallback
+
+The published npm `cdrca` package is missing more than just Quark support
+— it's missing the entire plugin-hook subsystem
+(`Back-end/Transpiler/plugin.js`, the `pluginAPI` wiring in `Parser.js`)
+that Quark and any future built-in plugin depend on, even though that
+subsystem exists on CDRCA's GitHub `main` branch under the same version
+number. Verified directly, not assumed: installing the real package and
+running an `@id ...` directive through its actual `transpile()` throws
+`Unexpected token`.
+
+A missing subsystem isn't something the line-level find-and-replace style
+of `patch.rs`/`quark_patch.rs` can restore — there's no existing line to
+rewrite. So `cli/src/cdrca_bundle.rs` bundles a complete, fixed copy of
+CDRCA directly into the CLI binary (`include_str!`, same pattern as
+Quark's own files) and `cli/src/commands/install.rs`'s
+`ensure_working_runtime()` installs it in place of the broken npm copy
+whenever `node_modules/cdrca/Back-end/Transpiler/plugin.js` is missing
+after `npm install cdrca` runs. This bundled copy also carries the fix
+for a second, deeper bug found by actually running CDRCA's real
+transpiler end-to-end (not by reading source): `FullTranspiler.js` was
+silently dropping every `JS_BLOCK` statement — what every Quark directive
+compiles to — from final output, with no error. See
+`cli/src/cdrca_bundle.rs`'s own module docs for the full verification
+trail, and for what's deliberately excluded (the ~100MB Monaco-based
+visual editor, since a CLI-driven `.cdrca` build/run doesn't need the
+browser IDE).
+
+This runs automatically as part of `cdrca create app` and
+`cdrca install cdrca` — no separate command, no extra confirmation
+prompt, since it's fixing a broken dependency rather than installing new
+capability the user needs to approve.
+
 ## Quark UI directive patching
 
 Same category of local, per-project patch as port patching above, applied
 right after it in `cdrca create app` / `cdrca install cdrca` — but staging
-a *built-in* plugin (`quark`) into a project's `node_modules/cdrca` copy
-rather than rewriting an existing line. Quark lets `.cdrca` files apply
+a *built-in* component layer (`quark`) into a project's `node_modules/cdrca`
+copy rather than rewriting an existing line. Quark lets `.cdrca` files apply
 prebuilt UI components to real DOM elements with a one-line directive
-(`@sidebar sidebar.closable.edgy = value`) instead of hand-coding them.
-Full syntax, preset/modifier reference, and how the directive resolves to
-a `JS_BLOCK` AST node are in [QUARK.md](./QUARK.md) — this section is
-just where it sits in the overall install flow and why.
+(`@mainNav navbar.glass`, `@sidebar sidebar.closable.edgy = value`) instead
+of hand-coding them. Full syntax, the target/component/variant/modifier
+model, and the full component reference are in [QUARK.md](./QUARK.md) —
+this section is just where it sits in the overall install flow and why.
 
 **Why built-in rather than an ecosystem plugin:** distributing it through
 the registry (like any other `type: "plugin"` package — see
@@ -151,15 +184,37 @@ the registry (like any other `type: "plugin"` package — see
 `cdrca.json` dependency entry, an install-time `y/N` confirmation prompt,
 and depending on the registry being reachable. None of that fits a
 component library meant to be available in every project by default —
-so `cli/src/quark_patch.rs` bundles Quark's two files directly into the
+so `cli/src/quark_patch.rs` bundles Quark's files directly into the
 compiled CLI binary (`include_str!`) and writes them out itself, the same
 way the installer bundles the Rust toolchain rather than fetching it
 per-project.
 
+**Two separate patch steps, not one:** `quark_patch::patch_quark()` handles
+the *server-side* piece — staging `plugin.js` (the only Quark file that
+actually runs in Node; CDRCA's own `Back-end/Transpiler/plugin.js`
+`require()`s it directly) and merging the `"quark"` entry into
+`plugins.json`. `quark_patch::scan_and_patch_quark_frontend()` handles the
+*browser-side* piece — it's what actually loads `Quark`/`Quark.UI` into
+the page CDRCA's `Front-end/index.js` `eval()`s generated code into,
+since staging files alone doesn't make a project's `node_modules/cdrca`
+copy actually reference them. This function first runs
+`cli/src/quark_libscan.rs`, a plain text scan across the project's
+`.cdrca` files for `@useLib <plugin>.<library>` directives, then writes a
+managed, fully-replaced `<!-- QUARK:START -->...<!-- QUARK:END -->` block
+into `Front-end/index.html` containing a persistent `#quarkRoot` div plus
+only the `<script>` tags for libraries actually referenced (`quark-core.js`
+and `quark-ui.js` are always included — they're Quark's required engine
+and compatibility shim, not optional). See
+[PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md) for why library selection has
+to be resolved this way (statically, ahead of page load) rather than at
+runtime — the short version is that a `.cdrca` file's entire generated
+output runs inside one synchronous `eval()`, with no natural pause point
+to inject a script tag mid-script.
+
 **Current important caveat, verified directly (not assumed):** installing
-the real npm `cdrca` package and running an `@sidebar ...` directive
-through its actual transpiler throws `Unexpected token at position 0: @`.
-The plugin-hook system Quark depends on
+the real npm `cdrca` package and running an `@id ...` directive through
+its actual transpiler throws `Unexpected token at position 0: @`. The
+plugin-hook system Quark depends on
 (`Back-end/Transpiler/plugin.js`, `pluginAPI` wired into `Parser.js`)
 exists on CDRCA's GitHub `main` branch but is **not in the currently
 published npm package**, even though the version string matches. The
@@ -167,8 +222,7 @@ patch stages Quark's files and `plugins.json` entry regardless (harmless
 — they just sit inert until a project's CDRCA copy catches up), but
 reports `QuarkPatchOutcome::PluginSystemNotPresent` rather than a plain
 success, and `cdrca doctor` surfaces the same thing. See
-[QUARK.md](./QUARK.md#-current-status-not-active-yet) for the up-to-date
-status.
+[QUARK.md](./QUARK.md) for the up-to-date status.
 
 ## The remaining open gap: server-ready signaling
 

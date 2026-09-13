@@ -59,6 +59,15 @@ pub fn run(name: &str) -> Result<()> {
         bail!("npm install cdrca failed with status {npm_status}");
     }
 
+    // As of this CLI version, the published npm 'cdrca' package is
+    // missing the plugin-hook system Quark (and any future built-in
+    // plugin) depends on entirely — not just missing Quark itself, the
+    // whole subsystem. This falls back to a bundled, fixed copy when
+    // that's the case. See cdrca_bundle.rs and
+    // crate::commands::install::ensure_working_runtime for the full
+    // reasoning and the current-status caveat.
+    crate::commands::install::ensure_working_runtime(root)?;
+
     // Patch this project's own local CDRCA copy so it honors a per-project
     // CDRCA_PORT instead of the hardcoded port 3000 — verified directly
     // against CDRCA's real source, which does not support this natively.
@@ -74,6 +83,15 @@ pub fn run(name: &str) -> Result<()> {
     // quark_patch.rs for why, and for the current-npm-package caveat.
     let quark_outcome = quark_patch::patch_quark(root)?;
     quark_patch::report_quark_outcome(&quark_outcome);
+
+    // Loads Quark's runtime (quark-core.js, quark-ui.js, and any
+    // @useLib-referenced library bundles) into this project's actual
+    // Front-end/index.html — the page the transpiled JS_BLOCK code
+    // eval()s into. Scans the freshly-written starter .cdrca file, so a
+    // starter that already uses @useLib gets the right scripts from the
+    // very first `cdrca create app`.
+    let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(root)?;
+    quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
 
     // Bake in the port this project will use for the lifetime of the
     // project (not renegotiated on every `cdrca run`), and record whether
@@ -98,7 +116,7 @@ pub fn run(name: &str) -> Result<()> {
         quark_outcome,
         QuarkPatchOutcome::AlreadyPatched | QuarkPatchOutcome::Applied
     ) {
-        println!("  (see warning above — @sidebar-style Quark directives won't work yet)");
+        println!("  (see warning above — Quark directives won't work yet)");
     }
     println!("\nNext: cd {name} && cdrca build app");
     Ok(())

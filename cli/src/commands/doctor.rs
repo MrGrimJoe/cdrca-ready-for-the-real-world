@@ -243,7 +243,7 @@ pub async fn run(cwd: &Path) -> anyhow::Result<()> {
                             Status::Warn,
                             "Quark is not active for this project — either `cdrca install cdrca` \
                              hasn't run, or this project's local CDRCA copy predates the \
-                             plugin-hook system Quark depends on. `@sidebar ...`-style \
+                             plugin-hook system Quark depends on. `@id component.variant` \
                              directives will throw \"Unexpected token\" until this is resolved. \
                              Run `cdrca install cdrca` to re-check.",
                         ) as usize;

@@ -1,10 +1,12 @@
 mod auth;
+mod cdrca_bundle;
 mod commands;
 mod lockfile;
 mod manifest;
 mod npm;
 mod patch;
 mod project_state;
+mod quark_libscan;
 mod quark_patch;
 mod registry;
 mod resolve;

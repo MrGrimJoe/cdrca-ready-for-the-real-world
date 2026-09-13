@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Visual CDRCA</title>
+    <link rel="stylesheet" href="index.css">
+  </head>
+  <body>
+    <div class="UI">
+       <canvas id="THRREjsRender" class="sideWindow left"></canvas>
+       <!-- <canvas id="THRREjsRender"></canvas> -->
+       <iframe id="textEditer" class="sideWindow right" src="textEditerWindow/index.html"></iframe> 
+       <div id="belloCanvas">
+        <button onclick="refreshPreview()">Refresh preview</button>
+       </div>
+       <!--
+         Quark's persistent DOM root. Unlike the 3D scene (currentANIM),
+         which is torn down and recreated by updateRenderer() on every
+         refreshPreview(), this container is never removed — Quark
+         instances mounted here survive re-evaluation of generated code.
+         A .cdrca file's own JS_BLOCK code is the only way to create
+         elements with a real id today (there's no DOM-authoring
+         primitive in the DSL itself), so that's where a developer
+         appends whatever elements their @id directives are meant to
+         target, e.g.:
+           def ACTION ... JS_BLOCK "
+             const nav = document.createElement('div');
+             nav.id = 'mainNav';
+             nav.innerHTML = '<div class=\"brand\">My App</div><nav><a href=\"/\">Home</a></nav>';
+             document.getElementById('quarkRoot').appendChild(nav);
+           "
+         See docs/QUARK.md and docs/PLUGIN-LIBRARIES.md in the
+         cdrca-ready-for-the-real-world repo for the full @id
+         component.variant and @useLib directive reference.
+       -->
+       <div id="quarkRoot"></div>
+ </div>
+   
+    <script src="./three.js"></script>
+    
+    <script src="./Renderer.js"></script>
+    <script src="./parser.js"></script>
+    <!--
+      Quark load order matters: quark-core.js (registry + tokens) must
+      run before quark-components.js (registers the built-in component
+      library) and quark-templates.js, which must both run before
+      quark-ui.js (the Quark.UI.mount(...) compatibility shim that
+      generated JS_BLOCK code from @id directives actually calls).
+      Only plugin.js runs server-side (Back-end/Transpiler/plugin.js
+      require()s it directly); these four files are browser-only and
+      live exclusively here. This raw source checkout always loads all
+      four unconditionally — a project scaffolded via
+      cdrca-ready-for-the-real-world's CLI instead gets only the
+      libraries its own .cdrca files actually reference via @useLib
+      (see docs/PLUGIN-LIBRARIES.md in that repo for why library
+      selection is resolved statically rather than at runtime).
+    -->
+    <script src="./Transpiler-Plugins/quark/quark-core.js"></script>
+    <script src="./Transpiler-Plugins/quark/quark-components.js"></script>
+    <script src="./Transpiler-Plugins/quark/quark-templates.js"></script>
+    <script src="./Transpiler-Plugins/quark/quark-ui.js"></script>
+    <script src="./index.js"></script>
+    <!-- <script src="./monaco/package/dev/vs/loader.js"></script> -->
+  </body>
+</html>  

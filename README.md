@@ -180,11 +180,15 @@ worth knowing before you dig in:
 - **The manifest-level plugin permission model (`uses`) and CDRCA's
   in-DSL plugin syntax haven't been fully reconciled** — see
   [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md).
-- **Quark (the built-in `@sidebar ...` UI directive plugin) is staged
-  into every project but isn't active yet** — it depends on a
-  plugin-hook system that exists on CDRCA's GitHub `main` branch but
-  hasn't reached the published npm package. Verified directly, not
-  assumed — see [docs/QUARK.md](./docs/QUARK.md).
+- **Quark (the built-in UI component directive layer) works out of the
+  box** — `cdrca create app` / `cdrca install cdrca` automatically falls
+  back to this CLI's own bundled, fixed copy of CDRCA whenever the
+  published npm package is missing the plugin-hook system Quark depends
+  on (verified directly: the published package doesn't have it yet).
+  See [docs/QUARK.md](./docs/QUARK.md) and
+  [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md#bundled-cdrca-runtime-fallback)
+  for the full story, including one real bug this bundled copy also
+  fixes in CDRCA itself (not just Quark).
 
 None of these block normal use of `cdrca create app` / `run` / `build
 app` day to day — they're the honest list of what's still settling. Run
@@ -203,7 +207,7 @@ local store health).
   subcommand, with examples.
 - [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md) — the
   permissions/`uses` model for plugin-type packages.
-- [docs/QUARK.md](./docs/QUARK.md) — the built-in `@directive` UI plugin:
+- [docs/QUARK.md](./docs/QUARK.md) — the built-in `@directive` UI component layer:
   syntax, presets/modifiers, how it's wired in, and its current
   not-active-yet status.
 - [docs/LICENSING.md](./docs/LICENSING.md) — this repo's license status,

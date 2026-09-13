@@ -23,7 +23,7 @@ pub struct ProjectState {
     /// (QuarkPatchOutcome::is_ok()) for this project. False covers both
     /// "not staged" (npm install cdrca hasn't run) and "staged but inert"
     /// (this project's local CDRCA copy predates the plugin-hook system)
-    /// — either way, `@sidebar ...`-style directives won't work yet.
+    /// — either way, `@id component.variant` directives won't work yet.
     pub quark_patch_applied: bool,
 }
 

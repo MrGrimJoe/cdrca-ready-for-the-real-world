@@ -69,7 +69,7 @@ and should not be redesigned unilaterally:
 - The manifest-level `uses` permission model and CDRCA's in-DSL
   `@requires`/`plugin { ... }` syntax haven't been fully reconciled —
   see [docs/PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md).
-- **Quark, the built-in `@sidebar ...` UI directive plugin
+- **Quark, the built-in UI component directive layer
   (`cli/src/quark_patch.rs`), is staged into every project but isn't
   active yet** — verified directly against the published npm `cdrca`
   package, which doesn't yet contain the plugin-hook system it depends

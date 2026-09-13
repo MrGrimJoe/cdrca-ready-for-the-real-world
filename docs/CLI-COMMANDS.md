@@ -137,7 +137,7 @@ Scaffolds a full CDRCA app project in a new `<name>/` directory:
 `.cdrca` scene file, and — critically — actually installs the CDRCA
 language runtime into the project via `npm install cdrca`, patches it so
 the project gets its own stable port, and stages Quark, the built-in
-`@sidebar ...` UI directive plugin (see ARCHITECTURE.md and
+UI component directive layer (see ARCHITECTURE.md and
 [QUARK.md](./QUARK.md) — Quark is staged but may not be active yet
 depending on your CDRCA copy's version, see the warning it prints). Name
 is a required argument here; there's no interactive prompt in this
