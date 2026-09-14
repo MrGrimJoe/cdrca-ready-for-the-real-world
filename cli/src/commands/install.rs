@@ -2,10 +2,14 @@ use anyhow::{bail, Context, Result};
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::fulltranspiler_patch;
+use crate::js_block_semicolon_patch;
 use crate::lockfile::{Lockfile, LockedPackage};
 use crate::manifest::PackageType;
+use crate::parser_spacing_patch;
 use crate::patch;
 use crate::cdrca_bundle;
+use crate::plugin_stage;
 use crate::project_state::ProjectState;
 use crate::quark_patch;
 use crate::registry::RegistryClient;
@@ -66,6 +70,19 @@ pub async fn run(spec: &str, project_root: &Path) -> Result<()> {
         println!("Installed {name}@{version}");
     }
 
+    // Verified bug fix (see docs/REACTIVE-STATE.md, bug #4): a plugin
+    // package used to be downloaded/verified/locked and then never
+    // actually wired up — no Plugins/<name>/plugin.js, no plugins.json
+    // entry, indistinguishable from "not installed" to the transpiler.
+    // `package_dir` is resolved either way (freshly installed, or already
+    // present from a previous run) so staging always has a real path to
+    // copy the entry file from.
+    if version_info.manifest.package_type == PackageType::Plugin {
+        let package_dir = store.package_dir(name, &version);
+        let stage_outcome = plugin_stage::stage_plugin(project_root, &package_dir, &version_info.manifest)?;
+        plugin_stage::report_outcome(name, &stage_outcome);
+    }
+
     // Update the project's lockfile.
     let mut lock = Lockfile::load_or_default(project_root)?;
     lock.upsert(
@@ -115,10 +132,24 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
     let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(project_root)?;
     quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
 
+    // Same four "make plugins work" patches applied in create.rs — a
+    // fresh `npm install cdrca` here could just as easily bring in an
+    // unpatched copy, so these are always re-checked, not skipped just
+    // because a previous create/install already applied them once.
+    let fulltranspiler_outcome = fulltranspiler_patch::patch_js_block_output(project_root)?;
+    fulltranspiler_patch::report_outcome(&fulltranspiler_outcome);
+    let parser_spacing_outcome = parser_spacing_patch::patch_js_block_spacing(project_root)?;
+    parser_spacing_patch::report_outcome(&parser_spacing_outcome);
+    let js_block_semicolon_outcome = js_block_semicolon_patch::patch_js_block_semicolon(project_root)?;
+    js_block_semicolon_patch::report_outcome(&js_block_semicolon_outcome);
+
     let mut state = ProjectState::load_or_default(project_root)?;
     state.ensure_port()?;
     state.port_patch_applied = outcome.is_ok();
     state.quark_patch_applied = quark_outcome.is_ok();
+    state.plugin_pipeline_patch_applied = fulltranspiler_outcome.is_ok()
+        && parser_spacing_outcome.is_ok()
+        && js_block_semicolon_outcome.is_ok();
     state.save(project_root)?;
 
     println!("CDRCA runtime updated.");

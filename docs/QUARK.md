@@ -59,13 +59,43 @@ worked around here):
    template entry in `defaultTemplateRenderer_OBJs` that emits
    collected `JS_BLOCK` statements right after `OAS_OBJ` is built and
    before the scene starts rendering.
+4. **Single-character identifiers/values get silently mistyped by the
+   real tokenizer — verified directly, reproduced with `Tokenizer.js`'s
+   own `defaultTokenizer()`.** A single-character `identifier` token (or
+   a single-digit `number` token) immediately followed by another token
+   has its `.type` overwritten with the *following* token's type — only
+   `.type` is corrupted, `.value` is always correct. This silently broke
+   every single-character element id (`@x navbar.glass`) and every
+   single-character/single-digit value (`@a mypreset = 5`): code that
+   checked `token.type === "identifier"` (or `"newline"`, for detecting
+   the end of a value) would incorrectly reject or truncate. **Not**
+   patched at the Tokenizer source — worked around in `plugin.js` itself,
+   which now classifies a token by the shape of its `.value`
+   (`isIdentifierLike` / `isNewlineToken` helpers) instead of trusting
+   `.type`, everywhere it matters. Verified end-to-end: `@x navbar.glass`
+   and `@a mypreset = 5` both now transpile correctly through the real
+   pipeline.
+
+Three more bugs were found in this same verification pass that are
+**not** Quark-specific — they block any plugin that compiles to a
+`JS_BLOCK` (this repo's own `cdrca-reactive-state` included), and one
+blocks the CLI's own plugin *installation* step. See
+[REACTIVE-STATE.md](./REACTIVE-STATE.md) for the full repro + fix of
+each, and for one candidate bug from the same investigation that
+turned out **not** to apply to this repo (a plugin-registration-shape
+mismatch, already covered by point 1 above, that only would have
+existed if this repo's host and Quark's `plugin.js` disagreed on
+calling convention — they don't).
 
 A real integration test suite (`tests/quark.test.js` in the CDRCA source
 repo, run with `node tests/quark.test.js` — no mocks, calls the actual
-`transpiler.transpile()`) covers all of this: a directive alone, a
+`transpiler.transpile()`) covers points 1–3 above: a directive alone, a
 directive with a multi-token hex value, multiple directives in source
 order, a directive alongside real scene content, and confirming a file
-with zero directives produces no stray output.
+with zero directives produces no stray output. Point 4 (the tokenizer
+workaround) is covered by this repo's own reproduction against
+`Tokenizer.js` directly plus an end-to-end transpile — see
+REACTIVE-STATE.md's test notes.
 
 **This applies out of the box via `cdrca create app` / `cdrca install cdrca`.**
 This CLI bundles the exact fixed CDRCA source checkout described above

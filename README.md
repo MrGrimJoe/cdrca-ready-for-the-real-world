@@ -44,6 +44,13 @@ language's own syntax grammar (`extension/syntaxes/cdrca.tmLanguage.json`):
   into your project automatically. See [docs/QUARK.md](./docs/QUARK.md)
   — including an important current caveat about what's actually active
   yet.
+- **`cdrca-reactive-state`** — a small ecosystem plugin (not built-in
+  like Quark; `cdrca install cdrca-reactive-state` to add it to a
+  project) that adds reactive state + DOM data-binding: `state count = 0`,
+  `@countText bind.text = count`, `@increment click => count += 1`. See
+  [docs/REACTIVE-STATE.md](./docs/REACTIVE-STATE.md), and
+  [`plugins/cdrca-reactive-state/`](./plugins/cdrca-reactive-state) for
+  the plugin's own source, tests, and a runnable todo-app example.
 
 This repo's job is everything *around* that language: scaffolding
 projects, installing packages/plugins written in it, running them, and

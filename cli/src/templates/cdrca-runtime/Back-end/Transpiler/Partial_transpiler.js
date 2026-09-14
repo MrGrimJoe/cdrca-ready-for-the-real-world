@@ -223,7 +223,16 @@ ${statment.prams.code}
         return ADD_ImportEmbeding(statement, options);
         break;
       case "JS_BLOCK":
-        return { value: `(()=>{${statement.prams.code}})()`, type: "JS_BLOCK" };
+        // Verified bug fix: this used to emit no trailing semicolon.
+        // Consecutive top-level statements are only separated by blank
+        // lines in the generated output, and JS's automatic semicolon
+        // insertion does NOT treat a blank line as a statement boundary —
+        // so two JS_BLOCKs back to back (any two directives from Quark,
+        // cdrca-reactive-state, or a plain "JS {}" block) got glued into
+        // one invalid expression: the first IIFE's return value "called"
+        // with the second IIFE as an argument. The trailing `;` here
+        // closes each JS_BLOCK statement unambiguously.
+        return { value: `(()=>{${statement.prams.code}})();`, type: "JS_BLOCK" };
         break;
       case "PROP_DEF":
         return {

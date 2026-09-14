@@ -1,6 +1,6 @@
 [package]
 name = "cdrca"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "CLI, package manager, and build tool for the CDRCA animation DSL"
 license = "IOSL"

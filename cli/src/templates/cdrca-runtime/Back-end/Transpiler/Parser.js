@@ -1,6 +1,27 @@
 // const defaultTokenizer = require("./Tokenizer").defaultTokenizer;
 
 // because I need default tokenizer etc        since index.js is centeral i need a constructor, iife is easiest
+// Verified bug fix: several token-collecting rules below used to join
+// captured token values with `.join("")` (no separator), e.g. the JS_BLOCK
+// / PROP_DEF body readers. That collapses "function foo(){ return 1; }"
+// into "functionfoo(){return1;}" — a SyntaxError — breaking the "drop into
+// JS {} for anything the mini-language can't do" escape hatch, and
+// anything else built on a raw JS_BLOCK (Quark, cdrca-reactive-state).
+// A blanket `.join(" ")` is NOT the fix — it breaks `i++` into the invalid
+// `i + +`. Instead, a space is inserted only between two consecutive
+// "word" characters ([A-Za-z0-9_$]), leaving punctuation-to-punctuation
+// joins (`++`, `--`, `=>`) untouched.
+function joinTokenValues(tokens) {
+  const isWordChar = (c) => !!c && /[A-Za-z0-9_$]/.test(c);
+  return tokens.reduce((acc, t) => {
+    const value = String(t.value);
+    if (acc.length > 0 && isWordChar(acc[acc.length - 1]) && isWordChar(value[0])) {
+      return acc + " " + value;
+    }
+    return acc + value;
+  }, "");
+}
+
 const parserConstructor = function (defaultTokenizer, pluginAPI) {
   /*
    * DSL Parser for .cdrca Files (Node.js Only)
@@ -469,7 +490,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         throw new Error("Unclosed plugin definition block");
       }
 
-      const body = bodyTokens.map((t) => t.value).join("");
+      const body = joinTokenValues(bodyTokens);
       return {
         type: "PLUGIN_DEF",
         prams: {
@@ -524,7 +545,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         pos++;
       }
       if (depth !== 0) throw new Error("Unclosed JS block");
-      const code = codeTokens.map((t) => t.value).join("");
+      const code = joinTokenValues(codeTokens);
       return { type: "JS_BLOCK", prams: { code }, newPosition: pos };
     }
 
@@ -575,7 +596,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         pos++;
       }
       if (depth !== 0) throw new Error("Unclosed prop definition");
-      const code = codeTokens.map((t) => t.value).join("");
+      const code = joinTokenValues(codeTokens);
       return {
         type: "PROP_DEF",
         prams: { name, abstracts, optionOtherPROP, code },
@@ -651,7 +672,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         pos++;
       }
       if (depth !== 0) throw new Error("Unclosed parameters in prop use");
-      const prams = pramsTokens.map((t) => t.value).join("");
+      const prams = joinTokenValues(pramsTokens);
 
       // Handle optional "as" clause
       let alias = null;
@@ -719,7 +740,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         valueTokens.push(tokens[pos]);
         pos++;
       }
-      const value = valueTokens.map((t) => t.value).join("");
+      const value = joinTokenValues(valueTokens);
       return { type, prams: { value }, newPosition: pos };
     }
 
@@ -730,7 +751,7 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
         commentTokens.push(tokens[pos]);
         pos++;
       }
-      const value = commentTokens.map((t) => t.value).join("");
+      const value = joinTokenValues(commentTokens);
       return { type: "COMMENT", value, newPosition: pos };
     }
 

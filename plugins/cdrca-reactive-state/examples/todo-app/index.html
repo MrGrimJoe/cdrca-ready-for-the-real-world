@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>cdrca-reactive-state — todo example</title>
+</head>
+<body>
+  <h1>Todos</h1>
+
+  <input id="newTodoInput" placeholder="What needs doing?">
+  <button id="addBtn">Add</button>
+
+  <div id="todoList"></div>
+
+  <!-- Cloned once per item in the `todos` array by `bind.list`. The
+       data-bind-* attributes interpolate fields from each item; the
+       inline onchange/onclick attributes are the documented per-item
+       event mechanism (see docs/REACTIVE-STATE.md#collections) — they
+       call the plain window.toggleTodo/window.removeTodo functions
+       defined in main.cdrca's JS {} block directly. -->
+  <template id="todoItemTemplate">
+    <li data-reactive-key="">
+      <input type="checkbox" data-bind-checked="done"
+             onchange="window.toggleTodo(this.closest('[data-reactive-key]').dataset.reactiveKey.replace(/^id:/, '')*1)">
+      <span data-bind-text="text"></span>
+      <button onclick="window.removeTodo(this.closest('[data-reactive-key]').dataset.reactiveKey.replace(/^id:/, '')*1)">✕</button>
+    </li>
+  </template>
+
+  <p><span id="remainingCount"></span> remaining</p>
+  <button id="clearDoneBtn">Clear done</button>
+
+  <!-- The plugin's runtime — zero dependencies, plain <script> tag. -->
+  <script src="../../runtime.js"></script>
+  <!-- The generated JS from main.cdrca (via `cdrca build`/`cdrca run`)
+       would be loaded here in a real project, e.g.: -->
+  <!-- <script src="./main.js"></script> -->
+</body>
+</html>

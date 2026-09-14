@@ -1,8 +1,13 @@
 [
-  {
-    "name": "quark",
-    "path": "quark/plugin.js",
-    "uses": [["syntax", "customRule"]],
-    "permissions": []
-  }
+    {
+        "name": "quark",
+        "path": "quark/plugin.js",
+        "uses": [
+            [
+                "syntax",
+                "customRule"
+            ]
+        ],
+        "permissions": []
+    }
 ]

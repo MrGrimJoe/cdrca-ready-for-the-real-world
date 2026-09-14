@@ -25,6 +25,15 @@ pub struct ProjectState {
     /// (this project's local CDRCA copy predates the plugin-hook system)
     /// — either way, `@id component.variant` directives won't work yet.
     pub quark_patch_applied: bool,
+    /// Whether the four verified-bug patches that block ANY plugin (not
+    /// just Quark) — fulltranspiler_patch, parser_spacing_patch, and
+    /// js_block_semicolon_patch — all reported an ok outcome. `#[serde(default)]`
+    /// so a `.cdrca-state.json` written before this field existed still
+    /// deserializes (as `false`, meaning "unknown/not yet verified" —
+    /// harmless since `cdrca install`/`create` re-check and update it
+    /// every run regardless).
+    #[serde(default)]
+    pub plugin_pipeline_patch_applied: bool,
 }
 
 impl ProjectState {

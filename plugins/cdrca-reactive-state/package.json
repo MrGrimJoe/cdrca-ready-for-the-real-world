@@ -1,0 +1,12 @@
+{
+  "name": "cdrca-reactive-state-devtools",
+  "private": true,
+  "description": "Dev/test tooling for the cdrca-reactive-state plugin. plugin.js and runtime.js (the shipped plugin) have zero dependencies — these are test-only.",
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "devDependencies": {
+    "cdrca": "^01.00.06",
+    "jsdom": "^24.0.0"
+  }
+}

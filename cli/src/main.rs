@@ -1,10 +1,14 @@
 mod auth;
 mod cdrca_bundle;
 mod commands;
+mod fulltranspiler_patch;
+mod js_block_semicolon_patch;
 mod lockfile;
 mod manifest;
 mod npm;
+mod parser_spacing_patch;
 mod patch;
+mod plugin_stage;
 mod project_state;
 mod quark_libscan;
 mod quark_patch;

@@ -50,7 +50,11 @@ Resolves via the registry, downloads the release asset directly from
 GitHub (never via npm), verifies its checksum, extracts it into the
 local package store, and updates the project's `cdrca-lock.json`. For
 plugin packages, shows the permission confirmation prompt first — see
-[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md).
+[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md) — then stages the
+plugin's entry file into `Plugins/<name>/plugin.js` and adds it to
+`plugins.json`, so its hooks are actually active immediately (see
+[ARCHITECTURE.md](./ARCHITECTURE.md#making-any-plugin-actually-work-four-bugs-beyond-quark-itself)
+— this staging step used to be missing entirely).
 
 ```
 cdrca install mathcore
@@ -61,10 +65,12 @@ cdrca install mathcore@3.1.0
 itself, not an ecosystem package) doesn't go through the registry at
 all — the runtime is a real npm package, so this installs/updates it via
 npm directly into the current project, re-applies the port patch (see
-[ARCHITECTURE.md](./ARCHITECTURE.md#port-patching)), and re-stages Quark,
+[ARCHITECTURE.md](./ARCHITECTURE.md#port-patching)), re-stages Quark,
 the built-in UI directive plugin (see
 [ARCHITECTURE.md](./ARCHITECTURE.md#quark-ui-directive-patching) and
-[QUARK.md](./QUARK.md)).
+[QUARK.md](./QUARK.md)), and re-applies the three patches every plugin
+(built-in or ecosystem) depends on (see
+[ARCHITECTURE.md](./ARCHITECTURE.md#making-any-plugin-actually-work-four-bugs-beyond-quark-itself)).
 
 ```
 cdrca install cdrca@latest

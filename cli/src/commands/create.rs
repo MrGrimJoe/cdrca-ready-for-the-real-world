@@ -1,7 +1,10 @@
 use anyhow::{bail, Context, Result};
 use std::path::Path;
 
+use crate::fulltranspiler_patch;
+use crate::js_block_semicolon_patch;
 use crate::manifest::{Manifest, PackageType};
+use crate::parser_spacing_patch;
 use crate::patch::{self, PatchOutcome};
 use crate::project_state::ProjectState;
 use crate::quark_patch::{self, QuarkPatchOutcome};
@@ -93,6 +96,26 @@ pub fn run(name: &str) -> Result<()> {
     let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(root)?;
     quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
 
+    // Four more bugs verified directly against CDRCA's real source block
+    // ANY plugin, including built-in Quark, from working end-to-end —
+    // not just Quark-specific gaps. Applied here (not just in
+    // install.rs) so a fresh project comes out already patched, before
+    // the user ever runs `cdrca install` on anything. See
+    // docs/REACTIVE-STATE.md for the full repro + fix of each. (A fifth
+    // bug this project's own CDRCA copy in
+    // Back-end/Transpiler/plugin.js is verified to already be free of —
+    // see that doc's "bug #3" note — so there's no fourth Rust patch
+    // module for it.)
+    let fulltranspiler_outcome = fulltranspiler_patch::patch_js_block_output(root)?;
+    fulltranspiler_patch::report_outcome(&fulltranspiler_outcome);
+    let parser_spacing_outcome = parser_spacing_patch::patch_js_block_spacing(root)?;
+    parser_spacing_patch::report_outcome(&parser_spacing_outcome);
+    let js_block_semicolon_outcome = js_block_semicolon_patch::patch_js_block_semicolon(root)?;
+    js_block_semicolon_patch::report_outcome(&js_block_semicolon_outcome);
+    let plugin_pipeline_patch_applied = fulltranspiler_outcome.is_ok()
+        && parser_spacing_outcome.is_ok()
+        && js_block_semicolon_outcome.is_ok();
+
     // Bake in the port this project will use for the lifetime of the
     // project (not renegotiated on every `cdrca run`), and record whether
     // the patch actually took — 'cdrca run'/'cdrca build app' both read
@@ -101,6 +124,7 @@ pub fn run(name: &str) -> Result<()> {
     let port = state.ensure_port()?;
     state.port_patch_applied = outcome.is_ok();
     state.quark_patch_applied = quark_outcome.is_ok();
+    state.plugin_pipeline_patch_applied = plugin_pipeline_patch_applied;
     state.save(root)?;
 
     println!("Created CDRCA app '{name}' in ./{name}");
@@ -117,6 +141,9 @@ pub fn run(name: &str) -> Result<()> {
         QuarkPatchOutcome::AlreadyPatched | QuarkPatchOutcome::Applied
     ) {
         println!("  (see warning above — Quark directives won't work yet)");
+    }
+    if !plugin_pipeline_patch_applied {
+        println!("  (see warning(s) above — some plugin directives may produce invalid JS)");
     }
     println!("\nNext: cd {name} && cdrca build app");
     Ok(())

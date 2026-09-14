@@ -22,10 +22,36 @@
 // Permissions required: none. This plugin only reads tokens and returns a
 // plain object — it never touches fs/child_process, so it should be
 // registered with permissions: [] in plugins.json.
+//
+// Coexistence with other "@" plugins (e.g. cdrca-reactive-state, which
+// registers at a higher priority for "bind"/event directives): the first
+// line of quarkCustomRule bails out if a higher-priority plugin already
+// produced a real node for this statement, so the two never fight over the
+// same "@" statement. Quark's own pattern is a wildcard
+// ("@id anyIdentifier(.anyIdentifier)* (= token)?") that would otherwise
+// also match e.g. "@count bind.text = count" and misread "bind" as an
+// unknown preset name.
+//
+// Tokenizer workaround: CDRCA's real Tokenizer.js has a verified bug —
+// a single-character identifier or single-digit number immediately
+// followed by another token has its `.type` silently overwritten with the
+// *following* token's type (e.g. "@x navbar" tokenizes "x" as type
+// "token", not "identifier"). This breaks every single-character element
+// id/modifier/value. `.value` is never corrupted, only `.type` is — so
+// this file classifies tokens by the shape of `.value` (isIdentifierLike /
+// isNewlineToken) instead of trusting `.type`, everywhere it matters.
 
 module.exports = function (pluginAPI /*, hostAPI */) {
   pluginAPI.register(0, "syntax", "customRule", quarkCustomRule);
 };
+
+function isIdentifierLike(t) {
+  return !!t && /^[A-Za-z_][A-Za-z0-9_]*$/.test(t.value);
+}
+
+function isNewlineToken(t) {
+  return !!t && t.value === "\n";
+}
 
 // Every library bundle Quark itself ships, beyond the always-loaded
 // quark-core.js + quark-ui.js (those two are the plugin's engine and
@@ -40,6 +66,10 @@ const QUARK_LIBRARIES = {
 };
 
 function quarkCustomRule(currentValue, ctx) {
+  // Another (higher-priority) plugin already produced a node for this
+  // statement — don't override it. See the "Coexistence" note above.
+  if (currentValue && currentValue.newPosition !== undefined) return undefined;
+
   const { tokens, pos, token } = ctx || {};
 
   // Not an "@..." statement -> not ours. Return undefined so CDRCA's
@@ -47,7 +77,7 @@ function quarkCustomRule(currentValue, ctx) {
   if (!token || token.value !== "@") return undefined;
 
   let p = pos + 1;
-  if (p >= tokens.length || tokens[p].type !== "identifier") return undefined;
+  if (p >= tokens.length || !isIdentifierLike(tokens[p])) return undefined;
 
   // @useLib <pluginName>.<libraryName>  — checked first since "useLib" is
   // a fixed keyword, distinct from the arbitrary element-id in the other
@@ -60,7 +90,7 @@ function quarkCustomRule(currentValue, ctx) {
 }
 
 function parseUseLib(tokens, p) {
-  if (p >= tokens.length || tokens[p].type !== "identifier") {
+  if (p >= tokens.length || !isIdentifierLike(tokens[p])) {
     throw new Error("Quark: expected a plugin name after '@useLib'");
   }
   const pluginName = tokens[p].value;
@@ -70,7 +100,7 @@ function parseUseLib(tokens, p) {
     throw new Error("Quark: expected '.<libraryName>' after '@useLib " + pluginName + "'");
   }
   p++;
-  if (p >= tokens.length || tokens[p].type !== "identifier") {
+  if (p >= tokens.length || !isIdentifierLike(tokens[p])) {
     throw new Error("Quark: expected a library name after '@useLib " + pluginName + ".'");
   }
   const libraryName = tokens[p].value;
@@ -97,7 +127,7 @@ function parseElementDirective(tokens, p) {
   p++;
 
   // <preset>
-  if (p >= tokens.length || tokens[p].type !== "identifier") return undefined;
+  if (p >= tokens.length || !isIdentifierLike(tokens[p])) return undefined;
   const preset = tokens[p].value;
   p++;
 
@@ -105,7 +135,7 @@ function parseElementDirective(tokens, p) {
   const modifiers = [];
   while (p < tokens.length && tokens[p].value === ".") {
     p++;
-    if (p >= tokens.length || tokens[p].type !== "identifier") {
+    if (p >= tokens.length || !isIdentifierLike(tokens[p])) {
       throw new Error("Quark: expected a modifier name after '.'");
     }
     modifiers.push(tokens[p].value);
@@ -122,11 +152,11 @@ function parseElementDirective(tokens, p) {
   let value = null;
   if (p < tokens.length && tokens[p].value === "=") {
     p++;
-    if (p >= tokens.length || tokens[p].type === "newline") {
+    if (p >= tokens.length || isNewlineToken(tokens[p])) {
       throw new Error("Quark: expected a value after '='");
     }
     const valueParts = [];
-    while (p < tokens.length && tokens[p].type !== "newline") {
+    while (p < tokens.length && !isNewlineToken(tokens[p])) {
       valueParts.push(tokens[p].value);
       p++;
     }

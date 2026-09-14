@@ -224,6 +224,60 @@ reports `QuarkPatchOutcome::PluginSystemNotPresent` rather than a plain
 success, and `cdrca doctor` surfaces the same thing. See
 [QUARK.md](./QUARK.md) for the up-to-date status.
 
+## Making ANY plugin actually work: four bugs beyond Quark itself
+
+Verifying Quark end-to-end (see above) surfaced bugs in CDRCA's plugin
+system generally — not specific to Quark, and not specific to any one
+plugin. Building a second real plugin
+([`cdrca-reactive-state`](../plugins/cdrca-reactive-state), see
+[REACTIVE-STATE.md](./REACTIVE-STATE.md)) as an independent check
+against the same source surfaced three more. Each was reproduced
+directly against this repo's actual CDRCA source (bundled copy and/or
+a project's separately-installed `node_modules/cdrca` copy) before
+being patched — full repro + fix for every one of these lives in
+REACTIVE-STATE.md's "Verified bugs" section, including one candidate
+bug from that investigation that turned out **not** to apply here once
+checked directly, called out rather than silently dropped.
+
+Same two-tier structure as the port patch and Quark patch above:
+
+1. This CLI's own bundled fallback copy of CDRCA
+   (`cli/src/templates/cdrca-runtime/...`) has three of these fixed
+   directly at the source — `FullTranspiler.js` (JS_BLOCK dropped from
+   output), `Parser.js` (token-joining corruption), and
+   `Partial_transpiler.js` (missing JS_BLOCK semicolon). Since the
+   published npm package currently lacks the plugin-hook system
+   entirely (see the Quark caveat above), this bundled copy is what
+   every project actually runs today — these three fixes are already
+   live for everyone, with no separate patch step needed.
+2. `cli/src/fulltranspiler_patch.rs`, `cli/src/parser_spacing_patch.rs`,
+   and `cli/src/js_block_semicolon_patch.rs` apply the identical fixes
+   to a project's separately-installed `node_modules/cdrca` copy —
+   forward-looking protection for whenever the published npm package
+   catches up and includes the plugin-hook system but not yet these
+   fixes, same reasoning as the port patch's local rewrite. Each is
+   idempotent and reports loudly (never a silent no-op) if the expected
+   code shape isn't found. Run from `create.rs` and `install.rs`
+   alongside the port/Quark patches.
+3. `cli/src/plugin_stage.rs` is a different kind of gap: `cdrca install
+   <plugin>` downloaded a package, verified its checksum, and recorded
+   it in the lockfile — but never copied its entry file into
+   `Plugins/<name>/plugin.js` or added a `plugins.json` entry, so an
+   installed plugin's hooks never actually loaded. Fixed generically
+   (not Quark-specific — Quark ships built into the CLI and is staged
+   by `quark_patch.rs` instead, since it never goes through the
+   registry download path at all).
+
+A fourth candidate bug from the same investigation — a claimed
+mismatch between how `plugin.js`'s `initializePlugin` calls a loaded
+plugin's `module.exports` and the calling convention Quark's own
+template uses — was checked directly against this repo's actual
+`Back-end/Transpiler/plugin.js` and found to already be consistent
+(both sides agree on `module.exports = function (pluginAPI) {
+pluginAPI.register(...) }`). No Rust patch module exists for it because
+there's nothing to patch here; see REACTIVE-STATE.md for why, in case
+this gets re-investigated later against a different CDRCA checkout.
+
 ## The remaining open gap: server-ready signaling
 
 Separate from the port issue: `Servers.main.init()` still has no clean
