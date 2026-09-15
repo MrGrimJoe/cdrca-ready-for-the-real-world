@@ -3,11 +3,14 @@ mod cdrca_bundle;
 mod commands;
 mod fulltranspiler_patch;
 mod js_block_semicolon_patch;
+mod library_stage;
 mod lockfile;
 mod manifest;
 mod npm;
+mod package_stage;
 mod parser_spacing_patch;
 mod patch;
+mod plugin_frontend_patch;
 mod plugin_stage;
 mod project_state;
 mod quark_libscan;
@@ -76,6 +79,15 @@ enum Command {
 enum CreateTarget {
     /// Scaffold a full CDRCA app project
     App { name: String },
+    /// Scaffold a new transpiler plugin package
+    Plugin {
+        name: String,
+        /// Also scaffold a stub opt-in library bundle under this name
+        /// (e.g. --library icons scaffolds <name>-icons.js and a matching
+        /// `libraries` manifest entry) — see docs/PLUGIN-LIBRARIES.md.
+        #[arg(long)]
+        library: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -102,6 +114,9 @@ async fn main() -> anyhow::Result<()> {
         Command::Publish => commands::publish::run(&cwd).await?,
         Command::Create { what } => match what {
             CreateTarget::App { name } => commands::create::run(&name)?,
+            CreateTarget::Plugin { name, library } => {
+                commands::create::run_plugin(&name, library.as_deref())?
+            }
         },
         Command::Build { what } => match what {
             BuildTarget::App => commands::build::run(&cwd)?,

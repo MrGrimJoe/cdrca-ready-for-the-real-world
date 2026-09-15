@@ -193,7 +193,7 @@ currentANIM = ObjectAnimationSystem_INS.main(OAS_OBJ).init(60, true);
   ];
   let defaultTemplateRenderer_OBJs = [
     {
-      placeholder: ["ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE"],
+      placeholder: ["ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE", "JS_BLOCK"],
       toString: general3DastToSTRplaceholder,
     },
 

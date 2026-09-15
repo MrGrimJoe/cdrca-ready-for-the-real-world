@@ -34,7 +34,18 @@ pub fn clear_token() -> Result<()> {
     }
 }
 
-// --- non-Windows dev fallback (never used in the shipped Windows build) ---
+// --- non-Windows fallback: plaintext file instead of a system keyring ---
+//
+// This is the actually-correct choice for Linux dev/CI/sandbox use, not
+// a compromise: `keyring`'s Linux backend needs a Secret Service/D-Bus
+// session, which a headless container (a Claude Code sandbox, most CI
+// runners) doesn't have — that would fail outright, not degrade
+// gracefully. `cdrca publish`/`cdrca login` are the only commands that
+// ever read this; every other command (`create`, `install` from a
+// pre-existing lockfile, `run`, `build app`, `doctor`) needs no token at
+// all, so this only matters for the narrow slice of testing that
+// actually touches the registry. See docs/ARCHITECTURE.md's "Building on
+// Linux" section.
 
 #[cfg(not(windows))]
 fn token_path() -> Result<std::path::PathBuf> {

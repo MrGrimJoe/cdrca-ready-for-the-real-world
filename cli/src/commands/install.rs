@@ -4,11 +4,14 @@ use std::path::Path;
 
 use crate::fulltranspiler_patch;
 use crate::js_block_semicolon_patch;
+use crate::library_stage;
 use crate::lockfile::{Lockfile, LockedPackage};
 use crate::manifest::PackageType;
+use crate::package_stage;
 use crate::parser_spacing_patch;
 use crate::patch;
 use crate::cdrca_bundle;
+use crate::plugin_frontend_patch;
 use crate::plugin_stage;
 use crate::project_state::ProjectState;
 use crate::quark_patch;
@@ -77,11 +80,39 @@ pub async fn run(spec: &str, project_root: &Path) -> Result<()> {
     // `package_dir` is resolved either way (freshly installed, or already
     // present from a previous run) so staging always has a real path to
     // copy the entry file from.
-    if version_info.manifest.package_type == PackageType::Plugin {
-        let package_dir = store.package_dir(name, &version);
-        let stage_outcome = plugin_stage::stage_plugin(project_root, &package_dir, &version_info.manifest)?;
-        plugin_stage::report_outcome(name, &stage_outcome);
+    //
+    // The same underlying gap applied to `type: "package"` and
+    // `type: "library"` too (plan-doc section 1.1's closing note) — each
+    // gets its own staging step, since each needs to land somewhere
+    // different (package_stage.rs / library_stage.rs).
+    let package_dir = store.package_dir(name, &version);
+    match version_info.manifest.package_type {
+        PackageType::Plugin => {
+            let stage_outcome = plugin_stage::stage_plugin(project_root, &package_dir, &version_info.manifest)?;
+            plugin_stage::report_outcome(name, &stage_outcome);
+        }
+        PackageType::Package => {
+            let stage_outcome = package_stage::stage_package(project_root, &package_dir, &version_info.manifest)?;
+            package_stage::report_outcome(name, &stage_outcome);
+        }
+        PackageType::Library => {
+            let stage_outcome = library_stage::stage_library(project_root, &package_dir, &version_info.manifest)?;
+            library_stage::report_outcome(name, &stage_outcome);
+        }
+        PackageType::App => {
+            // Apps aren't a dependency another project installs — nothing
+            // to stage.
+        }
     }
+
+    // Re-scan every time, not just for plugin installs: installing a
+    // type:"library" package can resolve an @useLib reference that was
+    // previously unresolved, and installing a plugin can bring in
+    // libraries: {} entries a starter file already references.
+    let (quark_frontend_outcome, generic_frontend_outcome, generic_frontend_results) =
+        plugin_frontend_patch::scan_and_patch_plugin_frontends(project_root)?;
+    quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
+    crate::commands::create::report_generic_frontend_results(&generic_frontend_outcome, &generic_frontend_results);
 
     // Update the project's lockfile.
     let mut lock = Lockfile::load_or_default(project_root)?;
@@ -128,9 +159,12 @@ async fn reinstall_cdrca_runtime(project_root: &Path, version_req: Option<&str>)
 
     // Re-scan for @useLib directives on every install too — this is the
     // command a user re-runs after adding a new @useLib line to pick up
-    // a library they didn't need before.
-    let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(project_root)?;
+    // a library they didn't need before. Generalized beyond Quark now
+    // (plan-doc section 1.3) — see plugin_frontend_patch.rs.
+    let (quark_frontend_outcome, generic_frontend_outcome, generic_frontend_results) =
+        plugin_frontend_patch::scan_and_patch_plugin_frontends(project_root)?;
     quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
+    crate::commands::create::report_generic_frontend_results(&generic_frontend_outcome, &generic_frontend_results);
 
     // Same four "make plugins work" patches applied in create.rs — a
     // fresh `npm install cdrca` here could just as easily bring in an

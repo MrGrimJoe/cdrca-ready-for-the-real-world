@@ -61,6 +61,28 @@ the same allowlist concept — **this hasn't been fully reconciled yet**
 (see the open item in ARCHITECTURE.md); treat the manifest-level model as
 the one the CLI's install-time prompt enforces today.
 
+**The complete, verified list** of `(hookType, hookProcess)` pairs
+CDRCA's real transpiler actually calls `pluginAPI.run(...)` for — found
+by grepping the real source directly
+(`Parser.js`/`Partial_transpiler.js`/`index.js`), not assumed from the
+DSL syntax above, which names a few of these but was never cross-checked
+against the actual call sites until now:
+
+| hookType | hookProcess |
+|---|---|
+| `syntax` | `beforeTokenize`, `afterTokenize`, `afterParseNode`, `customRule` |
+| `ast` | `visitStatement`, `visitHeader`, `visitSubHeader` |
+| `exec` | `beforeSwitch`, `beforeIf`, `beforeLoop`, `afterLoop` |
+| `before` / `after` | `parse`, `partialTranspile`, `multiFile`, `semanticAnalyze`, `fullTranspile`, `postOptionalParse` |
+
+`("syntax","customRule")` — used by Quark, `cdrca-reactive-state`, and
+the `cdrca create plugin` scaffold's starter — is the one most plugins
+need; it's CDRCA's escape hatch for adding new statement syntax. The
+rest exist and are wired up, but nothing in this repo currently uses
+them — a future plugin needing to run before/after a specific transpile
+phase (rather than just recognizing new statement syntax) has real,
+working hook points to reach for instead of assuming they don't exist.
+
 ## The install-time confirmation prompt
 
 Before `cdrca install <plugin>` downloads anything, the CLI:

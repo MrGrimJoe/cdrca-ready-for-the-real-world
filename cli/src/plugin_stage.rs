@@ -88,6 +88,51 @@ pub fn stage_plugin(
             staged_dir.join("plugin.js").display()
         )
     })?;
+    // Also stage the plugin's own manifest alongside its entry file — NOT
+    // read by CDRCA's `plugin.js` host (which only ever wants plugin.js
+    // itself), but read back later by `plugin_frontend_patch.rs`: a
+    // `@useLib <thisPlugin>.<name>` directive resolves against this
+    // plugin's declared `libraries` map first (see manifest.rs), and that
+    // map has to be discoverable on disk without re-fetching from the
+    // registry every time a project's frontend gets re-scanned.
+    let manifest_json = serde_json::to_string_pretty(manifest)?;
+    std::fs::write(staged_dir.join("cdrca.json"), manifest_json)
+        .context("writing staged plugin's cdrca.json")?;
+
+    // Also stage every bundle this plugin declares itself under
+    // `libraries` (paths relative to the plugin's own package root) —
+    // `plugin_frontend_patch.rs` resolves a `@useLib <thisPlugin>.<name>`
+    // directive against the co-staged `cdrca.json` above, but the actual
+    // FILE has to be here too, or resolution would succeed while staging
+    // the real bundle silently failed.
+    for (library_name, rel_path) in &manifest.libraries {
+        let lib_src = package_dir.join(rel_path);
+        if !lib_src.is_file() {
+            // Declared but missing — same "loud, not silent" policy as
+            // EntryFileNotFound, but this alone shouldn't fail staging
+            // the plugin itself (its OWN hook may be perfectly fine even
+            // if one declared bundle is broken) — report and continue.
+            eprintln!();
+            eprintln!(
+                "*** WARNING: plugin \"{}\"'s declared library \"{library_name}\" could NOT be staged ***",
+                manifest.name
+            );
+            eprintln!(
+                "Manifest declares libraries.{library_name} = \"{}\", but that file doesn't \
+                 exist in the downloaded package.",
+                rel_path
+            );
+            eprintln!();
+            continue;
+        }
+        let lib_dst = staged_dir.join(rel_path);
+        if let Some(parent) = lib_dst.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::copy(&lib_src, &lib_dst)
+            .with_context(|| format!("copying {} to {}", lib_src.display(), lib_dst.display()))?;
+    }
 
     let plugins_json_path = project_root.join(PLUGINS_JSON_REL);
     let mut entries: Vec<Value> = if plugins_json_path.is_file() {
@@ -187,6 +232,8 @@ mod tests {
             dependencies: HashMap::new(),
             permissions: Vec::new(),
             uses: vec![("syntax".to_string(), "customRule".to_string())],
+            libraries: HashMap::new(),
+            provides_for: None,
         }
     }
 
@@ -287,5 +334,42 @@ mod tests {
             PluginStageOutcome::CdrcaNotFound(_) => {}
             other => panic!("expected CdrcaNotFound, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn stages_declared_libraries_alongside_the_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        fake_project(dir.path(), true);
+        let pkg_dir = fake_package(dir.path());
+        std::fs::write(pkg_dir.join("dist-icons.js"), "/* icons bundle */").unwrap();
+        let mut manifest = fake_manifest("my-plugin");
+        manifest.libraries.insert("icons".to_string(), "dist-icons.js".to_string());
+
+        stage_plugin(dir.path(), &pkg_dir, &manifest).unwrap();
+
+        let staged_lib = dir
+            .path()
+            .join(PLUGINS_DIR_REL)
+            .join("my-plugin/dist-icons.js");
+        assert!(staged_lib.is_file());
+        assert_eq!(std::fs::read_to_string(staged_lib).unwrap(), "/* icons bundle */");
+
+        let staged_manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join(PLUGINS_DIR_REL).join("my-plugin/cdrca.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(staged_manifest["libraries"]["icons"], "dist-icons.js");
+    }
+
+    #[test]
+    fn missing_declared_library_warns_but_does_not_fail_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        fake_project(dir.path(), true);
+        let pkg_dir = fake_package(dir.path());
+        let mut manifest = fake_manifest("my-plugin");
+        manifest.libraries.insert("icons".to_string(), "does-not-exist.js".to_string());
+
+        let outcome = stage_plugin(dir.path(), &pkg_dir, &manifest).unwrap();
+        assert_eq!(outcome, PluginStageOutcome::Applied);
     }
 }

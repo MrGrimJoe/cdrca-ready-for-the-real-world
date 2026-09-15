@@ -50,11 +50,24 @@ Resolves via the registry, downloads the release asset directly from
 GitHub (never via npm), verifies its checksum, extracts it into the
 local package store, and updates the project's `cdrca-lock.json`. For
 plugin packages, shows the permission confirmation prompt first — see
-[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md) — then stages the
-plugin's entry file into `Plugins/<name>/plugin.js` and adds it to
-`plugins.json`, so its hooks are actually active immediately (see
+[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md). Then, depending on
+`type`:
+
+- **`"plugin"`** — stages the entry file into `Plugins/<name>/plugin.js`
+  (plus any declared `libraries` bundles alongside it) and adds it to
+  `plugins.json`, so its hooks are actually active immediately.
+- **`"package"`** — stages its `.cdrca` source tree into
+  `cdrca_packages/<name>/` in this project.
+- **`"library"`** — stages its bundle and adds it to `libraries.json`,
+  the index `@useLib`/`providesFor` resolution reads from.
+
+Every install also re-scans this project's `.cdrca` source for `@useLib`
+directives and re-patches `Front-end/index.html` accordingly — installing
+a library package or a plugin with its own bundled libraries can resolve
+a reference that was previously unresolved. See
 [ARCHITECTURE.md](./ARCHITECTURE.md#making-any-plugin-actually-work-four-bugs-beyond-quark-itself)
-— this staging step used to be missing entirely).
+and [PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md) — this staging step
+used to be missing entirely for every one of these three types.
 
 ```
 cdrca install mathcore
@@ -152,6 +165,36 @@ terminal path (the VS Code extension's Command Palette version of this
 
 ```
 cdrca create app my-animation
+```
+
+## `cdrca create plugin <name> [--library <libraryName>]`
+
+Scaffolds a new transpiler plugin package in a new `<name>/` directory:
+`cdrca.json` (`type: "plugin"`, `permissions: []`, `uses:
+[["syntax","customRule"]]`), the default CDRCA logo as its icon, and a
+starter `plugin.js` with the correct
+`module.exports = function (pluginAPI) { pluginAPI.register(...) }`
+shape already right, a stub `("syntax","customRule")` hook, and a
+comment listing every verified `(hookType, hookProcess)` pair CDRCA's
+real transpiler actually supports (see
+[PLUGIN-PERMISSIONS.md](./PLUGIN-PERMISSIONS.md)).
+
+With `--library <libraryName>`, also scaffolds a stub opt-in browser-side
+bundle (`<name>-<libraryName>.js`, following Quark's own library-bundle
+pattern — IIFE, guard-checks its target namespace exists) and a matching
+`libraries` manifest entry — see
+[PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md).
+
+Unlike `cdrca create app`, this does NOT run `npm install cdrca`,
+port-patch, or stage Quark — a plugin package has no runtime of its own
+to launch. Test it against a real host project (`cdrca create app
+<name>` elsewhere, `cdrca install <this-plugin>` once published, or by
+pointing that project's local package store at this directory manually
+during development) before `cdrca publish`.
+
+```
+cdrca create plugin mathcore
+cdrca create plugin mathcore --library icons
 ```
 
 ## `cdrca run`

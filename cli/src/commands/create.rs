@@ -6,10 +6,13 @@ use crate::js_block_semicolon_patch;
 use crate::manifest::{Manifest, PackageType};
 use crate::parser_spacing_patch;
 use crate::patch::{self, PatchOutcome};
+use crate::plugin_frontend_patch::{self, GenericLibraryResolution, PluginFrontendPatchOutcome, PluginFrontendResult};
 use crate::project_state::ProjectState;
 use crate::quark_patch::{self, QuarkPatchOutcome};
 
 const STARTER_CDRCA: &str = include_str!("../templates/starter.cdrca");
+const STARTER_PLUGIN_JS: &str = include_str!("../templates/starter-plugin.js");
+const STARTER_PLUGIN_LIBRARY_JS: &str = include_str!("../templates/starter-plugin-library.js");
 const DEFAULT_LOGO: &[u8] = include_bytes!("../templates/assets/cdrca-logo.png");
 
 pub fn run(name: &str) -> Result<()> {
@@ -40,6 +43,8 @@ pub fn run(name: &str) -> Result<()> {
         dependencies: Default::default(),
         permissions: Vec::new(),
         uses: Vec::new(),
+        libraries: Default::default(),
+        provides_for: None,
     };
     manifest.save(&root.join("cdrca.json")).context("writing cdrca.json")?;
 
@@ -90,11 +95,15 @@ pub fn run(name: &str) -> Result<()> {
     // Loads Quark's runtime (quark-core.js, quark-ui.js, and any
     // @useLib-referenced library bundles) into this project's actual
     // Front-end/index.html — the page the transpiled JS_BLOCK code
-    // eval()s into. Scans the freshly-written starter .cdrca file, so a
-    // starter that already uses @useLib gets the right scripts from the
-    // very first `cdrca create app`.
-    let quark_frontend_outcome = quark_patch::scan_and_patch_quark_frontend(root)?;
+    // eval()s into — AND, generically, resolves + loads any OTHER
+    // plugin's @useLib-referenced libraries too (plan-doc section 1.3;
+    // see plugin_frontend_patch.rs). Scans the freshly-written starter
+    // .cdrca file, so a starter that already uses @useLib gets the right
+    // scripts from the very first `cdrca create app`.
+    let (quark_frontend_outcome, generic_frontend_outcome, generic_frontend_results) =
+        plugin_frontend_patch::scan_and_patch_plugin_frontends(root)?;
     quark_patch::report_quark_frontend_outcome(&quark_frontend_outcome);
+    report_generic_frontend_results(&generic_frontend_outcome, &generic_frontend_results);
 
     // Four more bugs verified directly against CDRCA's real source block
     // ANY plugin, including built-in Quark, from working end-to-end —
@@ -149,8 +158,202 @@ pub fn run(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// `cdrca create plugin <name> [--library <libraryName>]` — plan-doc
+/// section 1.4. A first-timer should never have to hand-write
+/// `plugin.js` from the docs alone: even Quark's own reference
+/// implementation had a real, verified bug in the register-call shape
+/// until it was caught against a live transpile (see
+/// docs/REACTIVE-STATE.md's bug #3 note) — this scaffold's starter
+/// already has that shape right, so a new plugin author starts from a
+/// file that's known to load, not one they have to debug into that state
+/// themselves.
+///
+/// Unlike `run()` (the app scaffold), this does NOT `npm install cdrca`,
+/// port-patch, or stage Quark — a plugin package has no runtime of its
+/// own to launch; it's tested against a HOST app project (`cdrca create
+/// app <name>` elsewhere, then `cdrca install <this-plugin>` — or, before
+/// this is ever published, by pointing that host project's
+/// `cdrca-lock.json`/local store at this directory manually).
+pub fn run_plugin(name: &str, library: Option<&str>) -> Result<()> {
+    let root = Path::new(name);
+    if root.exists() {
+        bail!("directory '{name}' already exists");
+    }
+    std::fs::create_dir_all(root).context("creating project directory")?;
+
+    let icon_path = root.join("icon.png");
+    std::fs::write(&icon_path, DEFAULT_LOGO).context("writing default icon")?;
+
+    std::fs::write(root.join("plugin.js"), STARTER_PLUGIN_JS)
+        .context("writing starter plugin.js")?;
+
+    let mut libraries = std::collections::HashMap::new();
+    if let Some(library_name) = library {
+        // "Optionally a stub library JS file + matching libraries entry
+        // if they say up front they want to ship one" — plan-doc 1.4.
+        // The `{{PLUGIN_NAME_GLOBAL}}` placeholder is a best-effort
+        // UpperCamelCase guess at the plugin's own runtime namespace —
+        // deliberately left as an obvious TODO rather than guessed
+        // silently, since there's no way to know the real one from the
+        // plugin's name alone.
+        let global_name = to_upper_camel_case(name);
+        let lib_filename = format!("{name}-{library_name}.js");
+        let lib_contents = STARTER_PLUGIN_LIBRARY_JS
+            .replace("{{PLUGIN_NAME}}", name)
+            .replace("{{LIBRARY_NAME}}", library_name)
+            .replace("{{PLUGIN_NAME_GLOBAL}}", &global_name);
+        std::fs::write(root.join(&lib_filename), lib_contents)
+            .with_context(|| format!("writing starter library {lib_filename}"))?;
+        libraries.insert(library_name.to_string(), lib_filename);
+    }
+
+    let manifest = Manifest {
+        name: name.to_string(),
+        version: "0.1.0".to_string(),
+        description: format!("A CDRCA plugin: {name}"),
+        package_type: PackageType::Plugin,
+        entry: "plugin.js".to_string(),
+        icon: "icon.png".to_string(),
+        author: whoami_fallback(),
+        license: "IOSL".to_string(),
+        repository: String::new(),
+        dependencies: Default::default(),
+        // Empty on purpose — the scaffolded plugin.js's stub customRule
+        // never actually does anything unsafe yet, and permissions should
+        // be added deliberately as real functionality needs them, not
+        // pre-granted speculatively. See docs/PLUGIN-PERMISSIONS.md.
+        permissions: Vec::new(),
+        // Matches the one hook the starter plugin.js registers for —
+        // keep this in sync if you add or remove pluginAPI.register(...)
+        // calls, or CDRCA's runtime will seize your plugin on its first
+        // registration attempt outside this list (see
+        // docs/PLUGIN-PERMISSIONS.md).
+        uses: vec![("syntax".to_string(), "customRule".to_string())],
+        libraries,
+        provides_for: None,
+    };
+    manifest.save(&root.join("cdrca.json")).context("writing cdrca.json")?;
+
+    std::fs::write(root.join(".gitignore"), "node_modules/\n").context("writing .gitignore")?;
+
+    println!("Created CDRCA plugin '{name}' in ./{name}");
+    println!("  {name}/cdrca.json          (type: \"plugin\", uses: [[\"syntax\",\"customRule\"]])");
+    println!("  {name}/icon.png            (default CDRCA logo — replace with your own PNG)");
+    println!("  {name}/plugin.js           (edit myCustomRule — see its comments for the real, verified hook list)");
+    if let Some(library_name) = library {
+        println!("  {name}/{name}-{library_name}.js   (stub library bundle — edit {{{{PLUGIN_NAME_GLOBAL}}}} placeholder inside)");
+    }
+    println!("\nTest it against a real app before publishing: create one with 'cdrca create app <name>' elsewhere — see docs/CONTRIBUTING.md's 'Testing a plugin or library locally before publishing' section for how to load this into it before it's published. 'cdrca publish' once you're ready for others to install it.");
+    Ok(())
+}
+
+fn to_upper_camel_case(name: &str) -> String {
+    name.split(|c: char| c == '-' || c == '_')
+        .filter(|s| !s.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Reports any generic (non-Quark) plugin `@useLib` reference that
+/// couldn't be resolved — loud, since there's no earlier parse-time check
+/// for a third-party plugin's library names the way Quark has its own
+/// `QUARK_LIBRARIES` match. A brand-new `cdrca create app` normally has
+/// zero non-Quark plugins installed yet, so this is a no-op in the
+/// common case — it only fires for a starter template that already
+/// references a plugin.
+pub fn report_generic_frontend_results(
+    outcome: &PluginFrontendPatchOutcome,
+    results: &[PluginFrontendResult],
+) {
+    if *outcome == PluginFrontendPatchOutcome::IndexHtmlNotFound {
+        // Same underlying cause as the Quark IndexHtmlNotFound case
+        // (already reported above, in report_quark_frontend_outcome) —
+        // don't double-warn about the same missing file.
+        return;
+    }
+    for result in results {
+        for (lib, resolution) in &result.resolutions {
+            if *resolution == GenericLibraryResolution::Unresolved {
+                eprintln!();
+                eprintln!(
+                    "*** WARNING: @useLib {}.{} could NOT be resolved ***",
+                    lib.plugin_name, lib.library_name
+                );
+                eprintln!(
+                    "Neither plugin \"{}\"'s own declared libraries, nor any installed \
+                     type:\"library\" package's providesFor, has a \"{}\" entry. This directive \
+                     will fail at transpile time.",
+                    lib.plugin_name, lib.library_name
+                );
+                eprintln!();
+            }
+        }
+    }
+}
+
 fn whoami_fallback() -> String {
     std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod plugin_scaffold_tests {
+    use super::*;
+    use crate::manifest::Manifest;
+
+    #[test]
+    fn upper_camel_case_handles_hyphens_and_underscores() {
+        assert_eq!(to_upper_camel_case("my-test-plugin"), "MyTestPlugin");
+        assert_eq!(to_upper_camel_case("my_test_plugin"), "MyTestPlugin");
+        assert_eq!(to_upper_camel_case("mathcore"), "Mathcore");
+    }
+
+    #[test]
+    fn scaffolds_a_valid_plugin_without_a_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_path = dir.path().join("my-plugin");
+        run_plugin(plugin_path.to_str().unwrap(), None).unwrap();
+
+        assert!(plugin_path.join("plugin.js").is_file());
+        assert!(!plugin_path.join("my-plugin-icons.js").is_file());
+
+        let manifest = Manifest::load(&plugin_path.join("cdrca.json")).unwrap();
+        assert!(manifest.validate().is_ok());
+        assert!(manifest.entry_exists(&plugin_path));
+        assert_eq!(manifest.uses, vec![("syntax".to_string(), "customRule".to_string())]);
+    }
+
+    #[test]
+    fn scaffolds_a_valid_plugin_with_a_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_path = dir.path().join("my-plugin");
+        run_plugin(plugin_path.to_str().unwrap(), Some("icons")).unwrap();
+
+        let manifest = Manifest::load(&plugin_path.join("cdrca.json")).unwrap();
+        assert!(manifest.validate().is_ok());
+        let lib_rel_path = manifest.libraries.get("icons").expect("icons library declared");
+        assert!(plugin_path.join(lib_rel_path).is_file());
+        // The scaffolded library file itself must be valid JS syntax —
+        // checked by the real repo-wide `node --check` sweep in CI/manual
+        // testing, not re-parsed here (no JS engine embedded in this
+        // Rust test), but this at least confirms every placeholder got
+        // substituted, not left dangling.
+        let contents = std::fs::read_to_string(plugin_path.join(lib_rel_path)).unwrap();
+        assert!(!contents.contains("{{"), "unsubstituted template placeholder left in scaffolded file");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_an_existing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_path = dir.path().join("my-plugin");
+        std::fs::create_dir_all(&plugin_path).unwrap();
+        assert!(run_plugin(plugin_path.to_str().unwrap(), None).is_err());
+    }
 }

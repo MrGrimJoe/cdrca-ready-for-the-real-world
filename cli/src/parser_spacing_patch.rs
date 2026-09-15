@@ -24,8 +24,12 @@
 //! IMPORTANT: this fix is NOT a blanket `.join(" ")` — that breaks `i++`
 //! into the invalid `i + +`. It inserts a space only between two
 //! consecutive "word" characters (`[A-Za-z0-9_$]`), leaving
-//! punctuation-to-punctuation joins untouched. See `joinTokenValues()`
-//! below — it must stay byte-for-byte in sync with the version bundled in
+//! punctuation-to-punctuation joins untouched. It also excludes the
+//! specific case of a bare digit run immediately followed by an x/X-led
+//! identifier (a hex literal like `0xff0000`, tokenized as "0" then
+//! "xff0000") — the naive word-boundary rule alone corrupts that into
+//! invalid JS ("0 xff0000"). See `joinTokenValues()` below — it must stay
+//! byte-for-byte in sync with the version bundled in
 //! `templates/cdrca-runtime/.../Parser.js`.
 
 use anyhow::{Context, Result};
@@ -44,11 +48,29 @@ const HELPER_FN: &str = "// Verified bug fix (docs/REACTIVE-STATE.md, bug #5): s
 // block or a PROP_DEF body. A blanket `.join(\" \")` is NOT the fix — it\n\
 // breaks `i++` into the invalid `i + +`. A space is inserted only between\n\
 // two consecutive \"word\" characters ([A-Za-z0-9_$]).\n\
+//\n\
+// Verified bug fix #2: that same word-boundary rule also fires between a\n\
+// bare numeric-literal digit token and a following identifier starting\n\
+// with x/X — a hex literal like 0xff0000 tokenizes as \"0\" then\n\
+// \"xff0000\" (both type \"identifier\"), so the rule above inserted a\n\
+// space and produced invalid JS: \"0 xff0000\". Numbers immediately\n\
+// followed by an x/X-led identifier are always a hex-literal\n\
+// continuation in source that had no space to begin with, never two\n\
+// separate words, so that specific pairing is excluded from the\n\
+// space-insertion rule.\n\
 function joinTokenValues(tokens) {\n\
   const isWordChar = (c) => !!c && /[A-Za-z0-9_$]/.test(c);\n\
+  const endsInBareDigits = (s) => /(?:^|[^0-9A-Za-z_$])[0-9]+$/.test(s);\n\
+  const isHexContinuation = (s) => /^[xX][0-9a-fA-F]*$/.test(s);\n\
   return tokens.reduce((acc, t) => {\n\
     const value = String(t.value);\n\
-    if (acc.length > 0 && isWordChar(acc[acc.length - 1]) && isWordChar(value[0])) {\n\
+    const prevChar = acc[acc.length - 1];\n\
+    if (\n\
+      acc.length > 0 &&\n\
+      isWordChar(prevChar) &&\n\
+      isWordChar(value[0]) &&\n\
+      !(endsInBareDigits(acc) && isHexContinuation(value))\n\
+    ) {\n\
       return acc + \" \" + value;\n\
     }\n\
     return acc + value;\n\
@@ -135,7 +157,17 @@ pub fn patch_js_block_spacing(project_root: &Path) -> Result<ParserSpacingPatchO
         1,
     );
     for (find, replace) in JOIN_SITES {
-        patched = patched.replacen(find, replace, 1);
+        // NOT `.replacen(_, _, 1)`: the "codeTokens"/"code" site's exact
+        // text appears twice in the real file (JS_BLOCK at one line,
+        // PROP_DEF at another, both using identical variable names) —
+        // `replacen(..., 1)` would leave the second occurrence
+        // unpatched. `.replace()` (all occurrences) is correct here and
+        // a no-op-equivalent for every other site, which only appears
+        // once. Caught by `applies_and_rewrites_every_join_site` below
+        // actually failing against a fixture with the site duplicated,
+        // matching the real file's shape — don't "simplify" this back
+        // to `replacen`.
+        patched = patched.replace(find, replace);
     }
 
     std::fs::write(&target, patched)
@@ -211,7 +243,10 @@ const parserConstructor = function (defaultTokenizer, pluginAPI) {
             std::fs::read_to_string(dir.path().join("node_modules/cdrca/Back-end/Transpiler/Parser.js"))
                 .unwrap();
         assert!(patched.contains("function joinTokenValues(tokens)"));
-        assert!(!patched.contains(".join(\"\")"));
+        // Check for the actual buggy CALL pattern, not the bare
+        // substring `.join("")` — that substring also appears, harmlessly,
+        // inside HELPER_FN's own explanatory comment describing the bug.
+        assert!(!patched.contains(".map((t) => t.value).join(\"\")"));
         assert_eq!(patched.matches("joinTokenValues(").count(), 7); // fn def + 6 call sites
     }
 

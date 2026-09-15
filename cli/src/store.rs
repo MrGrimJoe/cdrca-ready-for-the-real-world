@@ -1,4 +1,8 @@
-//! Local package store under %LOCALAPPDATA%\CDRCA\
+//! Local package store, in this OS's standard local-data directory (via
+//! the `directories` crate — already cross-platform: `%LOCALAPPDATA%\CDRCA\`
+//! on Windows, `~/.local/share/cdrca` on Linux, `~/Library/Application
+//! Support/CDRCA` on macOS — see docs/ARCHITECTURE.md's "Building on
+//! Linux" section):
 //!
 //!   cache\            downloaded, verified tarballs, content-addressed by sha256
 //!   store\<name>\<version>\   extracted packages, immutable once installed
@@ -19,7 +23,7 @@ pub struct Store {
 impl Store {
     pub fn open() -> Result<Self> {
         let dirs = ProjectDirs::from("", "", "CDRCA")
-            .context("could not determine %LOCALAPPDATA% path")?;
+            .context("could not determine this OS's local data directory")?;
         let root = dirs.data_local_dir().to_path_buf();
         std::fs::create_dir_all(root.join("cache"))?;
         std::fs::create_dir_all(root.join("store"))?;

@@ -3,9 +3,9 @@
 A package ecosystem and native-app tooling suite for
 [CDRCA](https://github.com/ISLAH-org/CDRCA), Muhammad Ayyan's
 JavaScript-based animation DSL. This repo is the tooling layer — the CLI,
-package manager, Windows installer, and VS Code extension — **not the
-CDRCA language itself.** The language's own source, transpiler, and
-authoritative syntax docs live in
+package manager, Windows and Linux installers, and VS Code extension —
+**not the CDRCA language itself.** The language's own source, transpiler,
+and authoritative syntax docs live in
 [Ayyan's upstream repo](https://github.com/ISLAH-org/CDRCA); this repo
 never modifies that source, it only installs and runs a local copy of it.
 
@@ -51,6 +51,29 @@ language's own syntax grammar (`extension/syntaxes/cdrca.tmLanguage.json`):
   [docs/REACTIVE-STATE.md](./docs/REACTIVE-STATE.md), and
   [`plugins/cdrca-reactive-state/`](./plugins/cdrca-reactive-state) for
   the plugin's own source, tests, and a runnable todo-app example.
+- **`@useLib <plugin>.<library>`** — how a `.cdrca` file opts into one
+  specific optional bundle from a plugin (e.g. `@useLib
+  quark.components`) instead of every plugin shipping everything it has
+  onto every page. This isn't Quark-specific: a `type: "library"`
+  package can extend *any* plugin's library surface — including a
+  plugin it didn't ship with and whose author didn't have to do
+  anything — via a `providesFor` manifest field. `cdrca create plugin
+  <name> --library <libraryName>` scaffolds a plugin with a starter
+  library bundle already wired up. See
+  [docs/PLUGIN-LIBRARIES.md](./docs/PLUGIN-LIBRARIES.md) for the full
+  mechanism, including why it has to resolve statically rather than at
+  runtime.
+- **Package types beyond apps and plugins.** `cdrca.json`'s `type` field
+  is one of `app`, `plugin`, `library` (above), or `package` — a
+  reusable `.cdrca` source library another project can `add import`.
+  `cdrca install <a package>` stages its source into
+  `cdrca_packages/<name>/` at your project root (mirroring how
+  `node_modules/<name>/` works for npm). **Current caveat:** the files
+  really do land there, but whether CDRCA's own `add import` statement
+  resolves paths against that directory automatically isn't yet
+  confirmed end-to-end — see
+  [docs/ARCHITECTURE.md#community-plugins--libraries-staging-every-package-type-and-generalizing-beyond-quark](./docs/ARCHITECTURE.md#community-plugins--libraries-staging-every-package-type-and-generalizing-beyond-quark)
+  for exactly what's verified and what isn't.
 
 This repo's job is everything *around* that language: scaffolding
 projects, installing packages/plugins written in it, running them, and
@@ -69,45 +92,76 @@ intentionally doesn't duplicate that documentation.
   "Create New Project" command, and a run button. Bundled into the
   installer below rather than published to the Marketplace separately —
   **don't look for this on the VS Code Marketplace, it isn't there.**
-- **`installer/`** — a Windows installer (Inno Setup) that bundles the
-  CLI, a silent Rust toolchain install (so `cdrca build app` works
-  immediately, zero extra setup), the CDRCA branding/icons, and,
-  optionally, the VS Code extension.
+- **`installer/`** — two separate installers, built by two separate CI
+  jobs: a Windows installer (Inno Setup, `cdrca-installer.iss`) that
+  bundles the CLI, a silent Rust toolchain install (so `cdrca build
+  app` works immediately, zero extra setup), the CDRCA branding/icons,
+  and optionally the VS Code extension; and a Linux installer
+  (`installer/linux/install.sh`), a plain shell script + tarball that
+  puts the CLI on `PATH` and optionally installs the same VS Code
+  extension. See [Platform support](#platform-support) below for what
+  differs between the two.
 - **`docs/`** — architecture, manifest spec, CLI reference, plugin
   security model, licensing notes, and contributor notes. See
   [Documentation](#documentation) below.
 
 ## Platform support
 
-**Windows only**, by design, not as a current limitation to be lifted
-later:
+**Windows and Linux**, both built and released by CI
+(`.github/workflows/release.yml` runs `build-windows-installer` and
+`build-linux-installer` as two independent jobs on every tagged
+release). The CLI's own commands — `create`, `install`, `run`,
+`publish`, `doctor` — work the same way on both. A few things genuinely
+differ by platform, not as oversights but as real, documented scope
+decisions:
 
-- The installer (`installer/cdrca-installer.iss`) is an Inno Setup
-  script that produces a Windows `.exe`.
-- `cdrca build app` packages a project into a distributable **Windows**
-  `.exe` via Tauri.
-- `cdrca login`'s token is stored in the **Windows Credential Manager**
-  specifically (`cli/src/auth.rs`); non-Windows dev builds fall back to a
-  plaintext config-dir file purely so `cargo run`/tests work off-Windows,
-  and that fallback is never what ships.
-- PATH is added via the Windows-specific `HKCU\Environment` registry key.
+- **`cdrca build app` (packaging a project into a distributable app via
+  Tauri) is Windows-only.** This is the one deliberately Windows-only
+  piece of functionality, not a build limitation — see
+  [docs/ARCHITECTURE.md#building-on-linux-and-what-actually-ships-there](./docs/ARCHITECTURE.md#building-on-linux-and-what-actually-ships-there).
+- **`cdrca login`'s token storage differs.** On Windows it's the real
+  Windows Credential Manager (`cli/src/auth.rs`). On Linux — including
+  the actual shipped release binary, not just local dev builds — it
+  falls back to a plaintext file under your XDG config dir, since that
+  fallback is compiled in for any non-Windows target. This only affects
+  `cdrca login`/`cdrca publish`; every other command needs no token.
+- **PATH setup differs by installer**, matching each platform's
+  convention: the Windows installer writes the Windows-specific
+  `HKCU\Environment` registry key; the Linux installer
+  (`installer/linux/install.sh`) appends an `export PATH=...` line to
+  your shell rc file (`.bashrc`/`.zshrc`/`.profile`) instead.
+- **The Windows installer bundles a silent Rust toolchain install**
+  (so `cdrca build app` works immediately with zero setup); the Linux
+  installer doesn't, since there's nothing on Linux that currently
+  needs a local Rust toolchain to work right away.
 
-The CLI's Rust source isn't Windows-locked at the language level and can
-be built on other platforms for local development (see
-[docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md#building-locally)), but
-non-Windows is not a supported target for actual use.
+See [docs/CONTRIBUTING.md#building-locally](./docs/CONTRIBUTING.md#building-locally)
+for building either installer from source, including on a platform
+other than the one you're targeting.
 
 ## Install
 
-**Option A — download the installer** (recommended): grab the latest
-`cdrca-installer.exe` from this repo's
-[Releases](../../releases) page and run it. It installs the `cdrca` CLI
-to PATH, silently sets up a Rust toolchain, registers CDRCA's own icon
-for `.cdrca` files in Explorer, and — if VS Code is detected on your
-machine — offers to install the VS Code extension too (you can still opt
-in manually later if VS Code isn't installed yet).
+**Option A — download an installer** (recommended): grab the latest
+release for your platform from this repo's
+[Releases](../../releases) page.
 
-**Option B — build from source:** see
+- **Windows:** `cdrca-installer.exe` — installs the `cdrca` CLI to
+  PATH, silently sets up a Rust toolchain, registers CDRCA's own icon
+  for `.cdrca` files in Explorer, and — if VS Code is detected on your
+  machine — offers to install the VS Code extension too (you can still
+  opt in manually later if VS Code isn't installed yet).
+- **Linux:** `cdrca-installer-linux.tar.gz` — extract it and run
+  `./install.sh`. Puts `cdrca` on PATH (`~/.local/bin` by default,
+  adding it to your shell rc file if it isn't there already) and, if
+  `code` is on PATH, offers to install the VS Code extension the same
+  way. See [Platform support](#platform-support) above for what's
+  different from the Windows installer.
+
+**Option B — install via npm:** `npm install -g cdrca12` works on both
+platforms — it downloads the same prebuilt binary from the same
+release. See [npm/README.md](./npm/README.md).
+
+**Option C — build from source:** see
 [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md#building-locally).
 
 ## Quick start
@@ -135,13 +189,14 @@ you know what exists.
 | `cdrca login` / `cdrca logout` | GitHub OAuth login to the registry; clears the stored token. |
 | `cdrca search <query>` | Searches the registry for packages/plugins/apps. |
 | `cdrca info <package>` | Shows manifest details for a registry package. |
-| `cdrca install <package>[@version]` | Installs a package from the registry (or `cdrca` itself via npm — see below). |
+| `cdrca install <package>[@version]` | Installs a package, plugin, or library from the registry (or `cdrca` itself via npm — see [Install](#install) above). |
 | `cdrca update [package]` | Updates one package, or everything in the lockfile. |
 | `cdrca remove <package>` | Removes a package from the local store and lockfile. |
 | `cdrca list` | Lists everything installed in the local package store. |
 | `cdrca outdated` | Compares your lockfile against the registry's latest versions. |
 | `cdrca publish` | Validates and publishes the current project's package to the registry. |
 | `cdrca create app <name>` | Scaffolds a new CDRCA app project, end to end. |
+| `cdrca create plugin <name> [--library <libraryName>]` | Scaffolds a new transpiler plugin package, optionally with a starter [`@useLib`](./docs/PLUGIN-LIBRARIES.md) bundle. |
 | `cdrca run` | Runs the current project's CDRCA server directly. |
 | `cdrca build app` | Packages the current project into a distributable Windows `.exe`. |
 | `cdrca doctor` | Diagnoses your local toolchain, login, registry, and store setup. |
@@ -217,6 +272,14 @@ local store health).
 - [docs/QUARK.md](./docs/QUARK.md) — the built-in `@directive` UI component layer:
   syntax, presets/modifiers, how it's wired in, and its current
   not-active-yet status.
+- [docs/PLUGIN-LIBRARIES.md](./docs/PLUGIN-LIBRARIES.md) — the
+  `@useLib` directive: how a `.cdrca` file opts into a plugin's optional
+  library bundles, and how a `type: "library"` package can extend a
+  plugin it wasn't published with.
+- [docs/REACTIVE-STATE.md](./docs/REACTIVE-STATE.md) — the
+  `cdrca-reactive-state` plugin's syntax and internals, plus the real
+  bugs in CDRCA's own transpiler this repo found (and patched around)
+  while building it.
 - [docs/LICENSING.md](./docs/LICENSING.md) — this repo's license status,
   and a note on IOSLF, a broader license framework separately published
   by CDRCA's creator.

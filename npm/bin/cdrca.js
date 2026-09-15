@@ -3,11 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const binPath = path.join(__dirname, "..", "dist", "cdrca.exe");
+const binName = process.platform === "win32" ? "cdrca.exe" : "cdrca";
+const binPath = path.join(__dirname, "..", "dist", binName);
 
 if (!fs.existsSync(binPath)) {
   console.error(
-    "\ncdrca12: the cdrca.exe binary isn't installed. This usually means " +
+    "\ncdrca12: the cdrca binary isn't installed. This usually means " +
       "postinstall didn't run or failed -- try reinstalling with " +
       "`npm install -g cdrca12` and check the output above for an error.\n"
   );
@@ -17,7 +18,7 @@ if (!fs.existsSync(binPath)) {
 const result = spawnSync(binPath, process.argv.slice(2), { stdio: "inherit" });
 
 if (result.error) {
-  console.error(`\ncdrca12: failed to run cdrca.exe: ${result.error.message}\n`);
+  console.error(`\ncdrca12: failed to run cdrca: ${result.error.message}\n`);
   process.exit(1);
 }
 

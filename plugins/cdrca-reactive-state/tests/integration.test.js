@@ -82,14 +82,27 @@ ensurePatched(path.join(transpilerDir, "Parser.js"), [
     // raw JS recaptured from a JS_BLOCK or PROP_DEF body ("function
     // foo(){ return 1; }" -> "functionfoo(){return1;}"). Inserts the
     // shared `joinTokenValues()` helper and rewrites each site to call
-    // it instead of `.join("")` directly.
+    // it instead of `.join("")` directly. Also excludes the bare-digit +
+    // x/X-led-identifier pairing (a hex literal like 0xff0000, tokenized
+    // as "0" then "xff0000") from the space-insertion rule — the naive
+    // word-boundary check alone corrupts that into invalid JS
+    // ("0 xff0000"), found while adding an "animations" plugin that
+    // relies on this same helper.
     find: 'const parserConstructor = function (defaultTokenizer, pluginAPI) {',
     replace:
       'function joinTokenValues(tokens) {\n' +
       '  const isWordChar = (c) => !!c && /[A-Za-z0-9_$]/.test(c);\n' +
+      '  const endsInBareDigits = (s) => /(?:^|[^0-9A-Za-z_$])[0-9]+$/.test(s);\n' +
+      '  const isHexContinuation = (s) => /^[xX][0-9a-fA-F]*$/.test(s);\n' +
       '  return tokens.reduce((acc, t) => {\n' +
       '    const value = String(t.value);\n' +
-      '    if (acc.length > 0 && isWordChar(acc[acc.length - 1]) && isWordChar(value[0])) {\n' +
+      '    const prevChar = acc[acc.length - 1];\n' +
+      '    if (\n' +
+      '      acc.length > 0 &&\n' +
+      '      isWordChar(prevChar) &&\n' +
+      '      isWordChar(value[0]) &&\n' +
+      '      !(endsInBareDigits(acc) && isHexContinuation(value))\n' +
+      '    ) {\n' +
       '      return acc + " " + value;\n' +
       '    }\n' +
       '    return acc + value;\n' +

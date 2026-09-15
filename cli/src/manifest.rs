@@ -13,6 +13,22 @@ pub enum PackageType {
     Package,
     Plugin,
     App,
+    /// A bundle that extends someone else's (or one's own) plugin —
+    /// published as an independent package, resolved via `providesFor`.
+    /// See PLUGIN-LIBRARIES.md for the full design and
+    /// `plugin_frontend_patch.rs` for how an installed library actually
+    /// gets loaded into a project's page.
+    Library,
+}
+
+/// Which plugin + library-bundle-name slot a `type: "library"` package
+/// fills — the counterpart to a `.cdrca` file's `@useLib <plugin>.<library>`
+/// directive. Required (both fields non-empty) when `type` is `"library"`;
+/// meaningless and ignored otherwise.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvidesFor {
+    pub plugin: String,
+    pub library: String,
 }
 
 /// Real permission values from CDRCA's plugin system.
@@ -77,6 +93,32 @@ pub struct Manifest {
     pub permissions: Vec<Permission>,
     #[serde(default)]
     pub uses: Vec<(String, String)>,
+    /// Optional, only meaningful on a `type: "plugin"` manifest: bundles
+    /// the plugin ships itself, mapped `<libraryName> -> <path relative to
+    /// this manifest>` (mirrors what `quark_library_file()` currently
+    /// hardcodes for Quark). A `.cdrca` file's `@useLib <thisPlugin>.<name>`
+    /// resolves against this map FIRST — see `plugin_frontend_patch.rs` —
+    /// before falling back to checking installed `type: "library"`
+    /// packages whose `providesFor` targets this plugin.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub libraries: HashMap<String, String>,
+    /// Required (and only meaningful) when `type` is `"library"` — which
+    /// plugin + library-bundle-name slot this package fills. See
+    /// `ProvidesFor` and PLUGIN-LIBRARIES.md.
+    #[serde(default, rename = "providesFor", skip_serializing_if = "Option::is_none")]
+    pub provides_for: Option<ProvidesFor>,
+}
+
+/// Built-in plugins that ship inside the CLI itself rather than as a
+/// published registry package (today: just Quark — see `quark_patch.rs`).
+/// A `type: "library"` package's `providesFor.plugin` is allowed to name
+/// one of these even though `GET /api/packages/quark` will never resolve
+/// on the registry — see PLUGIN-LIBRARIES.md and the site's own
+/// `server/api.ts` validation (mirrors this list).
+pub const BUILTIN_PLUGIN_NAMES: &[&str] = &["quark"];
+
+pub fn is_builtin_plugin(name: &str) -> bool {
+    BUILTIN_PLUGIN_NAMES.contains(&name)
 }
 
 impl Manifest {
@@ -121,6 +163,44 @@ impl Manifest {
                 self.name
             );
         }
+        if self.package_type == PackageType::Library {
+            let Some(provides_for) = &self.provides_for else {
+                bail!("manifest type is 'library' but 'providesFor' is missing — a library must declare which plugin + library-bundle-name slot it fills, e.g. {{ \"plugin\": \"quark\", \"library\": \"icons\" }}");
+            };
+            if provides_for.plugin.trim().is_empty() {
+                bail!("manifest field 'providesFor.plugin' is empty");
+            }
+            if provides_for.library.trim().is_empty() {
+                bail!("manifest field 'providesFor.library' is empty");
+            }
+            // Whether `providesFor.plugin` names a REAL published plugin
+            // can only be confirmed against the registry, which this
+            // fast, offline check deliberately doesn't round-trip to
+            // (see this function's own doc comment) — but the tiny
+            // built-in allowlist IS checkable locally, so at least that
+            // half gets a real answer instead of always deferring.
+            if !is_builtin_plugin(&provides_for.plugin) {
+                eprintln!(
+                    "note: 'providesFor.plugin' is '{}', not one of this CLI's known \
+                     built-ins ({BUILTIN_PLUGIN_NAMES:?}) — this offline check can't confirm \
+                     it's a real published plugin; the registry validates that at publish time",
+                    provides_for.plugin
+                );
+            }
+        } else if self.provides_for.is_some() {
+            eprintln!(
+                "warning: manifest declares 'providesFor' but type is '{}', not 'library' — \
+                 it will be ignored",
+                self.package_type_label()
+            );
+        }
+        if !self.libraries.is_empty() && self.package_type != PackageType::Plugin {
+            eprintln!(
+                "warning: manifest declares 'libraries' but type is '{}', not 'plugin' — \
+                 it will be ignored",
+                self.package_type_label()
+            );
+        }
         Ok(())
     }
 
@@ -133,6 +213,111 @@ impl Manifest {
             PackageType::Package => "package",
             PackageType::Plugin => "plugin",
             PackageType::App => "app",
+            PackageType::Library => "library",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_manifest(package_type: PackageType) -> Manifest {
+        Manifest {
+            name: "test-pkg".to_string(),
+            version: "1.0.0".to_string(),
+            description: "test".to_string(),
+            package_type,
+            entry: "index.cdrca".to_string(),
+            icon: "icon.png".to_string(),
+            author: "tester".to_string(),
+            license: "IOSL".to_string(),
+            repository: String::new(),
+            dependencies: HashMap::new(),
+            permissions: Vec::new(),
+            uses: Vec::new(),
+            libraries: HashMap::new(),
+            provides_for: None,
+        }
+    }
+
+    #[test]
+    fn library_without_provides_for_is_rejected() {
+        let m = base_manifest(PackageType::Library);
+        assert!(m.validate().is_err());
+    }
+
+    #[test]
+    fn library_with_empty_provides_for_fields_is_rejected() {
+        let mut m = base_manifest(PackageType::Library);
+        m.provides_for = Some(ProvidesFor {
+            plugin: String::new(),
+            library: "icons".to_string(),
+        });
+        assert!(m.validate().is_err());
+
+        let mut m2 = base_manifest(PackageType::Library);
+        m2.provides_for = Some(ProvidesFor {
+            plugin: "quark".to_string(),
+            library: String::new(),
+        });
+        assert!(m2.validate().is_err());
+    }
+
+    #[test]
+    fn library_with_valid_provides_for_passes() {
+        let mut m = base_manifest(PackageType::Library);
+        m.provides_for = Some(ProvidesFor {
+            plugin: "quark".to_string(),
+            library: "icons".to_string(),
+        });
+        assert!(m.validate().is_ok());
+    }
+
+    #[test]
+    fn provides_for_on_a_non_library_manifest_is_a_warning_not_an_error() {
+        let mut m = base_manifest(PackageType::Package);
+        m.provides_for = Some(ProvidesFor {
+            plugin: "quark".to_string(),
+            library: "icons".to_string(),
+        });
+        // Warns to stderr but doesn't fail validation.
+        assert!(m.validate().is_ok());
+    }
+
+    #[test]
+    fn builtin_plugin_allowlist_recognizes_quark() {
+        assert!(is_builtin_plugin("quark"));
+        assert!(!is_builtin_plugin("some-random-third-party-plugin"));
+    }
+
+    #[test]
+    fn manifest_round_trips_through_json_with_new_fields() {
+        let mut m = base_manifest(PackageType::Plugin);
+        m.libraries.insert("icons".to_string(), "dist/icons.js".to_string());
+        let raw = serde_json::to_string(&m).unwrap();
+        let parsed: Manifest = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.libraries.get("icons"), Some(&"dist/icons.js".to_string()));
+        assert_eq!(parsed.package_type, PackageType::Plugin);
+    }
+
+    #[test]
+    fn old_manifests_without_new_fields_still_parse() {
+        // A manifest written before `libraries`/`providesFor` existed —
+        // #[serde(default)] must keep these backward compatible.
+        let raw = r#"{
+            "name": "old-pkg",
+            "version": "1.0.0",
+            "description": "d",
+            "type": "plugin",
+            "entry": "plugin.js",
+            "icon": "icon.png",
+            "author": "a",
+            "license": "IOSL",
+            "repository": ""
+        }"#;
+        let parsed: Manifest = serde_json::from_str(raw).unwrap();
+        assert!(parsed.libraries.is_empty());
+        assert!(parsed.provides_for.is_none());
     }
 }

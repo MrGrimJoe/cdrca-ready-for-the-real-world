@@ -278,6 +278,63 @@ pluginAPI.register(...) }`). No Rust patch module exists for it because
 there's nothing to patch here; see REACTIVE-STATE.md for why, in case
 this gets re-investigated later against a different CDRCA checkout.
 
+## Community plugins & libraries: staging every package type, and generalizing beyond Quark
+
+Building on the plugin-staging fix above, a further pass (the
+`cdrca-plugin-library-plan.md` planning doc) closed the same
+"downloaded but never wired up" gap for the other two package types,
+and generalized `quark_patch.rs`'s frontend-patching step — previously
+Quark-only — to work for any plugin.
+
+1. **`cli/src/package_stage.rs`** — `type: "package"` had the identical
+   staging gap `plugin_stage.rs` fixed for plugins: downloaded,
+   checksummed, locked, but never placed anywhere a consuming project's
+   own `.cdrca` source could reference. Stages the full source tree into
+   `cdrca_packages/<name>/`. **Explicitly flagged as only half-verified**
+   in that module's own doc comment: tracing CDRCA's real `add
+   import`/VFS mechanism (`Back-end/Transpiler/index.js`'s
+   `getVFScontent`, `Back-end/Servers/main/index.js`'s `handleAPI`) shows
+   the VFS a `.cdrca` file's imports resolve against is supplied
+   per-request by whatever calls `transpiler.transpile(...)` — a
+   browser-side editor POSTing to `/api/transpileCDRCA` in `cdrca run`'s
+   case — not built by any recursive disk scan anywhere in this bundled
+   runtime. The files really do land on disk now (verified); whether
+   CDRCA's own import mechanism picks them up from there automatically is
+   NOT yet confirmed against a real transpile.
+2. **`cli/src/library_stage.rs`** — stages a `type: "library"` package
+   (manifest.rs's new `PackageType::Library` + `ProvidesFor`, section
+   1.2 of the plan doc) into a project-local `libraries.json` index — the
+   direct counterpart to `plugins.json`, but for bundles that extend
+   someone else's plugin rather than plugins themselves. A library has
+   no natural home next to the plugin it targets (that plugin might not
+   even be installed by the same person), hence its own index rather
+   than reusing `plugins.json`.
+3. **`cli/src/plugin_frontend_patch.rs`** generalizes
+   `quark_patch.rs::patch_quark_frontend` (previously the only frontend
+   patcher, hardcoded to Quark) into `scan_and_patch_plugin_frontends()`,
+   which runs Quark's own already-tested path unchanged AND, for every
+   other plugin the (already-generic) `quark_libscan.rs` scanner finds,
+   resolves each `@useLib <plugin>.<library>` by checking (a) that
+   plugin's own declared `libraries` map — read back from a `cdrca.json`
+   copy `plugin_stage.rs` now co-stages alongside `plugin.js` — then (b)
+   `library_stage.rs`'s `libraries.json`. This is the piece that makes
+   "publish a library extending someone else's plugin, with zero
+   coordination from that plugin's author" actually work — see
+   [PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md). Unlike Quark, a generic
+   plugin has no manifest-level concept of an "always loaded core
+   script" (`quark-core.js`/`quark-ui.js`'s equivalent) — documented as a
+   real, deliberate limitation rather than solved: a plugin needing one
+   asks users to `@useLib` a bundle it names for that purpose.
+4. **`cli/src/commands/create.rs::run_plugin`** (`cdrca create plugin
+   <name> [--library <name>]`) scaffolds a new plugin package with the
+   register-call shape already correct — the exact shape that was once a
+   real, verified bug (REACTIVE-STATE.md's bug #3) — plus every verified
+   `(hookType, hookProcess)` pair (found by grepping
+   `Parser.js`/`Partial_transpiler.js`/`index.js` directly, not assumed
+   from the DSL's own partial hook-name mentions — see
+   PLUGIN-PERMISSIONS.md) in a comment, so a first-time plugin author
+   isn't hand-copying from docs alone.
+
 ## The remaining open gap: server-ready signaling
 
 Separate from the port issue: `Servers.main.init()` still has no clean
@@ -330,3 +387,83 @@ optional, selectable component in the Inno Setup installer
 
 See `extension/README.md` for what the extension itself does once
 installed.
+
+The Linux installer (`installer/linux/install.sh`, packaged by the
+`build-linux-installer` job) bundles the same `.vsix` and offers to run
+`code --install-extension` too, but detects VS Code by checking `code`
+on `PATH` rather than a registry key — see the comments at the top of
+that script for the other simplifications versus the Inno Setup
+installer (no bundled Rust toolchain install, no file-association step).
+
+## Building on Linux, and what actually ships there
+
+Everything the CLI's core workflow needs — `create`, `install`, `run`,
+`publish`, `doctor` — is already cross-platform: local package store
+paths go through the `directories` crate (resolves to XDG dirs on
+Linux, not a hardcoded `%LOCALAPPDATA%`), auth token storage falls back
+to a plaintext file outside `#[cfg(windows)]` (`auth.rs`), and `npm.rs`
+/`login.rs` already branch on `cfg!(windows)` where genuinely needed
+(picking `npm.cmd` vs `npm`, falling back to `xdg-open`). The one
+deliberately Windows-only piece is `cdrca build app` (Tauri → a
+distributable `.exe`) — a real product-scope decision, not an
+oversight, and out of scope for testing the language/plugin features
+themselves. See [Platform support](../README.md#platform-support) in
+the main README for the current, precise list of what's Windows-only
+vs. what genuinely runs on both.
+
+**This is a real, shipped target, not just a dev convenience.**
+`.github/workflows/release.yml` runs `build-windows-installer` and
+`build-linux-installer` as two independent jobs on every tag push: the
+Linux job does its own `cargo build --release` on `ubuntu-latest`,
+packages the resulting binary with `installer/linux/install.sh` into
+`cdrca-installer-linux.tar.gz`, and separately attaches the raw
+`cdrca-linux-x64` binary that the npm wrapper (`npm/`) downloads on a
+Linux `postinstall`. The Windows job is completely unaffected — it
+still produces `cdrca-installer.exe` via Inno Setup exactly as before.
+
+**One real behavioral gap worth knowing, not just a build-time one:**
+`auth.rs`'s plaintext-file fallback for token storage isn't only a
+CI/sandbox accommodation — it's what the Linux release binary itself
+uses too, since the `#[cfg(windows)]` split is by OS, not by
+environment. A real Linux desktop user's `cdrca login` token lands in a
+plain file under their XDG config dir, not a system keyring/Secret
+Service entry. `cdrca login`/`cdrca publish` are the only commands that
+ever read it; everything else (`create`, `install` from an existing
+lockfile, `run`, `doctor`) needs no token at all. Moving this to a real
+Secret Service integration on Linux is a reasonable future improvement,
+not something currently done.
+
+**Toolchain, for local dev specifically:** both CI jobs fetch current
+stable Rust via `dtolnay/rust-toolchain@stable`, so neither is affected
+by anything below. The problem below is specific to a local Linux dev
+environment whose only available Rust is an OS-packaged one (e.g.
+`apt install cargo rustc` on Ubuntu 24.04 gives rustc 1.75, from
+December 2023) rather than something installed via `rustup` (blocked in
+a sandboxed environment with no access to `static.rust-lang.org`).
+
+Several transitive dependencies' newer releases require a Cargo
+edition/rustc version 1.75 doesn't have (`edition2024`, stabilized in
+1.85). `Cargo.toml` already had `url`/`idna`/`hashbrown` pinned before
+this was investigated — evidently for the exact same reason, just not
+written down anywhere. The following were added to that same list, each
+pinned to the newest version still compatible with an MSRV around 1.63
+(verified by resolving and building successfully with rustc 1.75, not
+guessed from a version number alone):
+
+| Crate | Pinned to | Why |
+|---|---|---|
+| `encoding_rs` | `=0.8.35` | 0.8.40+ requires rustc 1.88 |
+| `getrandom` | `=0.2.15` | newer major (0.3/0.4) requires 1.63+/1.85+ respectively, and gets pulled in transitively regardless of this crate's own direct requirement — see the `tempfile`/`uuid` entries below |
+| `uuid` | `=1.11.0` | 1.26+'s `v4` feature pulls `getrandom ^0.4` |
+| `tempfile` | `=3.15.0` | 3.16+ pulls `getrandom ^0.3`/`^0.4` via its own direct dependency |
+| `indexmap` | `=2.5.0` | 2.7+ pulls `hashbrown ^0.15`, one major past the existing hashbrown pin |
+
+None of this affects either actual CI build (Windows or Linux) — pinning
+to an OLDER, still-current version never requires a newer rustc than
+building without the pin would, so `dtolnay/rust-toolchain@stable`
+builds these exact same pinned versions with no issue on either runner.
+It only ever *helps* compatibility, never hurts it. If bumping the
+minimum supported local Linux rustc is ever done deliberately (e.g.
+once `rustup` access is no longer blocked, or this apt package version
+moves forward), re-check each pin above against a real `cargo build`
+before removing it — don't just delete the pins and assume it'll work.

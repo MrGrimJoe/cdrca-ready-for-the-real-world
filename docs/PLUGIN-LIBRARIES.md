@@ -119,10 +119,77 @@ stay in sync:
 The `@useLib` directive itself isn't generic infrastructure baked into
 the language or into `quark_libscan.rs` — the scanner is a plain text
 scan of `@useLib <anything>.<anything>` lines, so it already works for
-any plugin name, not just `quark`. A new plugin's own `plugin.js`
-implements its own `parseUseLib`-equivalent validation (or reuses the
-same pattern Quark's does) for its own library names, and its own
-CLI-side patch function (following `quark_patch.rs`'s
-`patch_quark_frontend()` as the reference implementation) decides which
-of its bundles to stage based on what the scan finds referencing its
-plugin name.
+any plugin name, not just `quark`.
+
+**As of `cli/src/plugin_frontend_patch.rs` (plan-doc section 1.3), a new
+plugin does NOT need its own CLI-side patch function** — that used to be
+true (an earlier version of this doc said so), but Quark's own
+`patch_quark_frontend()` is now just ONE of two resolution paths a
+generic `scan_and_patch_plugin_frontends()` runs for every plugin found
+by the scan; Quark's is kept as its own special case only because its
+already-tested `#quarkRoot` persistent container and required
+core/ui load order predate the generic mechanism and there was no reason
+to risk that already-working behavior. Everything else — any plugin
+published after this — gets the generic path automatically, no code
+change anywhere else required. What a plugin author actually needs to
+do:
+
+1. **Declare `libraries` in `cdrca.json`** — `{ "<name>": "<path relative
+   to this manifest>" }`. `cdrca install <this-plugin>` stages both the
+   entry (`plugin.js`) and every declared library file together (see
+   `plugin_stage.rs`), and a co-staged copy of the manifest itself is
+   what `plugin_frontend_patch.rs` reads back later to resolve
+   `@useLib <thisPlugin>.<name>` — no separate registration step, and no
+   patch-function of your own to write.
+2. **Optionally, validate the name yourself in `plugin.js`** — e.g. a
+   `parseUseLib`-equivalent check against your own known-bundle-names map
+   (Quark's `QUARK_LIBRARIES` pattern), so a typo gets a real parse-time
+   error instead of `plugin_frontend_patch.rs`'s CLI-level "could NOT be
+   resolved" warning (still loud, just later in the pipeline — a
+   `cdrca install`/`create`, not a transpile). Either is honest and
+   non-silent; a parse-time check is just an earlier one.
+
+## `providesFor` — a library that isn't the plugin author's own
+
+`libraries` (above) only covers bundles a plugin ships ITSELF. A
+`type: "library"` package is different: it's an independently published
+package that extends **someone else's** (or its own author's) plugin,
+with zero coordination needed from that plugin's author — they don't
+need to grant permission, change their code, or even know the library
+exists.
+
+```json
+{
+  "name": "quark-icons",
+  "type": "library",
+  "providesFor": { "plugin": "quark", "library": "icons" },
+  "entry": "dist/quark-icons.js"
+}
+```
+
+`entry` here is the built JS bundle itself, not a `.cdrca` source file.
+`providesFor.plugin` can name a real published `type: "plugin"` package,
+or one of a small built-in allowlist (today: just `"quark"`, since it
+ships inside the CLI rather than as a registry package) —
+`manifest::BUILTIN_PLUGIN_NAMES`/`is_builtin_plugin()`, mirrored by the
+registry website's own publish-time validation.
+
+`cdrca install quark-icons` stages it via `library_stage.rs` into a
+project-local index (`libraries.json`, the direct counterpart to
+`plugins.json`) rather than next to the plugin it targets — it has no
+natural home there, since the targeted plugin might not even be
+installed by the same person. A `@useLib quark.icons` directive
+resolves against the target plugin's OWN `libraries` map first; falling
+through to `libraries.json` only if that plugin doesn't declare a
+matching name itself — see `plugin_frontend_patch.rs`'s
+`resolve_and_stage_one()` for the exact two-step order.
+
+## Scaffolding a new plugin (with an optional library) from scratch
+
+`cdrca create plugin <name>` (optionally `--library <libraryName>`)
+scaffolds a starter `plugin.js` with the correct
+`module.exports = function (pluginAPI) { pluginAPI.register(...) }`
+shape already right — see plan-doc section 1.4 — plus, with `--library`,
+a stub bundle following Quark's own library-bundle pattern (IIFE, no
+top-level globals, guard-checks its target namespace exists) and a
+matching `libraries` manifest entry, ready to fill in.

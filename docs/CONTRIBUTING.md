@@ -7,15 +7,20 @@
   [docs/ARCHITECTURE.md](./ARCHITECTURE.md) for design rationale.
 - `extension/` — the VS Code extension, bundled into the installer as a
   `.vsix` rather than published separately. See `extension/README.md`.
-- `installer/` — the Inno Setup script and CI-staged assets that produce
-  `cdrca-installer.exe`.
+- `installer/` — the Windows and Linux installer sources: the Inno Setup
+  script (`cdrca-installer.iss`) that produces `cdrca-installer.exe`,
+  and `installer/linux/install.sh`, the Linux counterpart packaged into
+  `cdrca-installer-linux.tar.gz`. CI-staged assets for both live under
+  their respective `staged/` directories at build time, not committed.
 - `docs/` — this folder.
-- `.github/workflows/release.yml` — builds the CLI, packages the
-  extension, and compiles the installer on every tagged release (`v*`
-  push) or manual `workflow_dispatch` run. A GitHub Release is only
-  created on tag pushes (Releases require a tag to attach to); manual
-  runs skip that step and just upload `cdrca-installer.exe` as a
-  workflow artifact instead.
+- `.github/workflows/release.yml` — two independent jobs,
+  `build-windows-installer` and `build-linux-installer`, each building
+  the CLI for its own platform, packaging the extension, and compiling
+  its own installer on every tagged release (`v*` push) or manual
+  `workflow_dispatch` run. A GitHub Release is only created on tag
+  pushes (Releases require a tag to attach to); manual runs skip that
+  step and just upload each platform's installer as a workflow artifact
+  instead (`cdrca-installer-windows`, `cdrca-installer-linux`).
 
 ## Building locally
 
@@ -26,9 +31,47 @@ cargo build --release
 ```
 Requires a reasonably current stable Rust toolchain — some transitive
 dependencies require newer Cargo than very old distro-packaged Rust
-provides. Run `cdrca doctor` after building to sanity-check your
-toolchain, login state, and local package store in one pass — see
+provides (this repo's `Cargo.toml` already pins several dependencies
+down for exactly this reason — see
+[docs/ARCHITECTURE.md#building-on-linux](./ARCHITECTURE.md#building-on-linux)
+if you hit this and need to understand or extend those pins, e.g. on a
+sandboxed Linux environment with no `rustup` access). Run `cdrca doctor`
+after building to sanity-check your toolchain, login state, and local
+package store in one pass — see
 [docs/CLI-COMMANDS.md#cdrca-doctor](./CLI-COMMANDS.md#cdrca-doctor).
+
+## Testing a plugin or library locally before publishing
+
+`cdrca create plugin <name>` scaffolds a package, but there's no
+registry entry for it yet to `cdrca install` normally. To test it
+against a real host project before `cdrca publish`:
+
+1. `cdrca create app <test-project>` somewhere, to get a real host with
+   a working CDRCA runtime.
+2. Copy your plugin's directory (with a real `cdrca.json`) into that
+   project's local package store at the exact path `cdrca install`
+   would have created it — `<store root>/store/<name>/<version>/`,
+   where `<store root>` is whatever `directories::ProjectDirs::from("",
+   "", "CDRCA").data_local_dir()` resolves to on your OS (typically
+   `%LOCALAPPDATA%\CDRCA` on Windows, `~/.local/share/CDRCA` on Linux —
+   see `cli/src/store.rs`, not a hardcoded path).
+3. Call `plugin_stage::stage_plugin()` (or `package_stage::stage_package`
+   / `library_stage::stage_library`, depending on your package's `type`)
+   directly against that project — there's no CLI subcommand for "stage
+   an arbitrary local directory as if it were installed" yet, so this
+   currently means either a small throwaway Rust test/binary calling the
+   function directly, or hand-replicating what it does (see that
+   module's own source — each one is a straightforward, well-commented
+   file copy + JSON index update).
+4. `cdrca install <your-plugin>` in the test project once it's actually
+   in the store this way, so the version-lockfile/staging path itself
+   also gets exercised, not just the staging function in isolation.
+
+This is a real gap worth closing with an actual CLI subcommand (e.g.
+`cdrca link <path>`, mirroring `npm link`) — not done here since it's
+outside plan-doc section 1's scope, called out for whoever picks up the
+2.5 "Build a Plugin" guide page work on the website side, since the
+guide will want a real answer for this step.
 
 **Extension:**
 ```
@@ -37,7 +80,7 @@ npm install
 npx @vscode/vsce package
 ```
 
-**Installer** (Windows only, requires Inno Setup 6):
+**Windows installer** (requires Inno Setup 6):
 ```
 cd installer
 ISCC.exe cdrca-installer.iss
@@ -45,8 +88,25 @@ ISCC.exe cdrca-installer.iss
 Note the installer script expects staged assets (`cdrca.exe`,
 `rustup-init.exe`, the CDRCA logo — both the flat banner PNG and the
 multi-resolution `.ico` — and the extension `.vsix`) under
-`installer/staged/` — see `.github/workflows/release.yml` for exactly
-how CI stages these before compiling.
+`installer/staged/` — see the `build-windows-installer` job in
+`.github/workflows/release.yml` for exactly how CI stages these before
+compiling.
+
+**Linux installer** (any platform that can produce a Linux `cdrca`
+binary and has `tar`):
+```
+mkdir -p installer/linux/staged
+cp cli/target/release/cdrca installer/linux/staged/
+cp installer/linux/install.sh installer/linux/staged/
+cp LICENSE.md installer/linux/staged/
+cp extension/cdrca-extension.vsix installer/linux/staged/   # optional
+tar czf cdrca-installer-linux.tar.gz -C installer/linux/staged .
+```
+This is just what `build-linux-installer` automates in CI — there's no
+compile step like Inno Setup, it's a plain tarball. See the comments at
+the top of `installer/linux/install.sh` for what it does and doesn't
+try to do (no bundled Rust toolchain, no VS Code registry-key
+detection — see [docs/ARCHITECTURE.md#building-on-linux-and-what-actually-ships-there](./ARCHITECTURE.md#building-on-linux-and-what-actually-ships-there)).
 
 ## Fixed contracts — don't change without coordinating
 

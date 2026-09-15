@@ -11,11 +11,27 @@
 // `i + +`. Instead, a space is inserted only between two consecutive
 // "word" characters ([A-Za-z0-9_$]), leaving punctuation-to-punctuation
 // joins (`++`, `--`, `=>`) untouched.
+// Verified bug fix #2: the word-boundary check above also fires between a
+// bare numeric-literal digit token and a following identifier that starts
+// with x/X — e.g. hex literal 0xff0000 tokenizes as "0" then "xff0000"
+// (both type "identifier"), so the rule above inserted a space and produced
+// invalid JS: "0 xff0000". Numbers immediately followed by an x/X-led
+// identifier are always a hex-literal continuation in source that had no
+// space to begin with, never two separate words, so that specific pairing
+// is excluded from the space-insertion rule.
 function joinTokenValues(tokens) {
   const isWordChar = (c) => !!c && /[A-Za-z0-9_$]/.test(c);
+  const endsInBareDigits = (s) => /(?:^|[^0-9A-Za-z_$])[0-9]+$/.test(s);
+  const isHexContinuation = (s) => /^[xX][0-9a-fA-F]*$/.test(s);
   return tokens.reduce((acc, t) => {
     const value = String(t.value);
-    if (acc.length > 0 && isWordChar(acc[acc.length - 1]) && isWordChar(value[0])) {
+    const prevChar = acc[acc.length - 1];
+    if (
+      acc.length > 0 &&
+      isWordChar(prevChar) &&
+      isWordChar(value[0]) &&
+      !(endsInBareDigits(acc) && isHexContinuation(value))
+    ) {
       return acc + " " + value;
     }
     return acc + value;
