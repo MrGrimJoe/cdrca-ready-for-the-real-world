@@ -230,7 +230,7 @@
           border: none; background: transparent; font: inherit;
           ${transitionCss("background,color")}
         }
-        [role="tab"][aria-selected="true"] { color: var(--quark-accent, #2563eb); font-weight: var(--quark-font-weightMedium); }
+        [role="tab"][aria-selected="true"] { color: var(--quark-accent-text, var(--quark-accent, #2563eb)); font-weight: var(--quark-font-weightMedium); }
       `);
       ctx.css(focusRingCss('[role="tab"]'), "focus");
 
@@ -254,7 +254,7 @@
       modern: { css: `[role="tablist"] { border-bottom: var(--quark-border-hairline); }` },
       pill: {
         css: `
-          [role="tablist"] { background: rgba(0,0,0,.05); padding: 4px; border-radius: var(--quark-radius-pill); }
+          [role="tablist"] { background: var(--quark-overlay, rgba(0,0,0,.05)); padding: 4px; border-radius: var(--quark-radius-pill); }
           [role="tab"] { border-radius: var(--quark-radius-pill); }
           [role="tab"][aria-selected="true"] { background: var(--quark-surface-light); }
         `,
@@ -343,7 +343,7 @@
       glass: {
         css: `background: var(--quark-surface-glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);`,
       },
-      soft: { css: `background: rgba(0,0,0,.03); box-shadow: none;` },
+      soft: { css: `background: var(--quark-overlay-subtle, rgba(0,0,0,.03)); box-shadow: none;` },
     },
     modifiers: {
       bordered: { css: `border: var(--quark-border-hairline);` },
@@ -377,8 +377,8 @@
     },
     variants: {
       solid: { css: `background: var(--quark-accent, #2563eb); color: #fff;` },
-      outlined: { css: `background: transparent; border: 1px solid var(--quark-accent, #2563eb); color: var(--quark-accent, #2563eb);` },
-      soft: { css: `background: color-mix(in srgb, var(--quark-accent, #2563eb) 15%, transparent); color: var(--quark-accent, #2563eb);` },
+      outlined: { css: `background: transparent; border: 1px solid var(--quark-accent, #2563eb); color: var(--quark-accent-text, var(--quark-accent, #2563eb));` },
+      soft: { css: `background: color-mix(in srgb, var(--quark-accent, #2563eb) 15%, transparent); color: var(--quark-accent-text, var(--quark-accent, #2563eb));` },
     },
     modifiers: {
       pill: { css: `border-radius: var(--quark-radius-pill);` },
@@ -465,7 +465,7 @@
     },
     variants: {
       modern: { css: `background: var(--quark-surface-light); box-shadow: var(--quark-shadow-sm);` },
-      soft: { css: `background: rgba(0,0,0,.03);` },
+      soft: { css: `background: var(--quark-overlay-subtle, rgba(0,0,0,.03));` },
       editorial: { css: `background: transparent; font-style: italic; border-left-width: 2px;` },
     },
   });
@@ -495,11 +495,11 @@
     },
     variants: {
       primary: { css: `background: var(--quark-accent, #2563eb); color: #fff;` },
-      secondary: { css: `background: rgba(0,0,0,.06); color: inherit;` },
-      outlined: { css: `background: transparent; border-color: var(--quark-accent, #2563eb); color: var(--quark-accent, #2563eb);` },
+      secondary: { css: `background: var(--quark-overlay, rgba(0,0,0,.06)); color: inherit;` },
+      outlined: { css: `background: transparent; border-color: var(--quark-accent, #2563eb); color: var(--quark-accent-text, var(--quark-accent, #2563eb));` },
       solid: { css: `background: var(--quark-accent, #2563eb); color: #fff;` },
-      soft: { css: `background: color-mix(in srgb, var(--quark-accent, #2563eb) 15%, transparent); color: var(--quark-accent, #2563eb);` },
-      flat: { css: `background: transparent; color: var(--quark-accent, #2563eb);` },
+      soft: { css: `background: color-mix(in srgb, var(--quark-accent, #2563eb) 15%, transparent); color: var(--quark-accent-text, var(--quark-accent, #2563eb));` },
+      flat: { css: `background: transparent; color: var(--quark-accent-text, var(--quark-accent, #2563eb));` },
     },
     modifiers: {
       pill: { css: `border-radius: var(--quark-radius-pill);` },
@@ -522,15 +522,15 @@
       ctx.css(`
         padding: var(--quark-space-sm) var(--quark-space-md); border-radius: var(--quark-radius-sm);
         font-family: var(--quark-font-sans); font-size: var(--quark-font-sizeMd);
-        border: 1px solid rgba(0,0,0,.15); ${transitionCss("border-color,box-shadow")}
+        border: 1px solid var(--quark-overlay-strong, rgba(0,0,0,.15)); ${transitionCss("border-color,box-shadow")}
       `);
       ctx.css(`&:focus { outline: none; border-color: var(--quark-accent, #2563eb); box-shadow: 0 0 0 3px color-mix(in srgb, var(--quark-accent, #2563eb) 20%, transparent); }`, "focus");
       ctx.css(`&:disabled { opacity: .6; cursor: not-allowed; }`, "disabled");
     },
     variants: {
       modern: { css: `background: var(--quark-surface-light);` },
-      minimal: { css: `border: none; border-bottom: 1px solid rgba(0,0,0,.2); border-radius: 0;` },
-      soft: { css: `background: rgba(0,0,0,.04); border-color: transparent;` },
+      minimal: { css: `border: none; border-bottom: 1px solid var(--quark-overlay-strong, rgba(0,0,0,.2)); border-radius: 0;` },
+      soft: { css: `background: var(--quark-overlay, rgba(0,0,0,.04)); border-color: transparent;` },
     },
     modifiers: {
       bordered: { css: `border-width: 2px;` },
@@ -547,13 +547,13 @@
       ctx.css(`
         padding: var(--quark-space-sm) var(--quark-space-md); border-radius: var(--quark-radius-sm);
         font-family: var(--quark-font-sans); font-size: var(--quark-font-sizeMd);
-        border: 1px solid rgba(0,0,0,.15); resize: vertical; ${transitionCss("border-color,box-shadow")}
+        border: 1px solid var(--quark-overlay-strong, rgba(0,0,0,.15)); resize: vertical; ${transitionCss("border-color,box-shadow")}
       `);
       ctx.css(`&:focus { outline: none; border-color: var(--quark-accent, #2563eb); box-shadow: 0 0 0 3px color-mix(in srgb, var(--quark-accent, #2563eb) 20%, transparent); }`, "focus");
     },
     variants: {
       modern: { css: `background: var(--quark-surface-light);` },
-      soft: { css: `background: rgba(0,0,0,.04); border-color: transparent;` },
+      soft: { css: `background: var(--quark-overlay, rgba(0,0,0,.04)); border-color: transparent;` },
     },
     modifiers: {
       "full-width": { css: `width: 100%;` },
@@ -568,13 +568,13 @@
       ctx.css(`
         padding: var(--quark-space-sm) var(--quark-space-md); border-radius: var(--quark-radius-sm);
         font-family: var(--quark-font-sans); font-size: var(--quark-font-sizeMd);
-        border: 1px solid rgba(0,0,0,.15); background: var(--quark-surface-light);
+        border: 1px solid var(--quark-overlay-strong, rgba(0,0,0,.15)); background: var(--quark-surface-light);
       `);
       ctx.css(focusRingCss("&"), "focus");
     },
     variants: {
       modern: { css: `` },
-      minimal: { css: `border: none; border-bottom: 1px solid rgba(0,0,0,.2); border-radius: 0;` },
+      minimal: { css: `border: none; border-bottom: 1px solid var(--quark-overlay-strong, rgba(0,0,0,.2)); border-radius: 0;` },
     },
   });
 
@@ -614,7 +614,7 @@
       ctx.el.style.webkitAppearance = "none";
       ctx.css(`
         width: 40px; height: 22px; border-radius: var(--quark-radius-pill);
-        background: rgba(0,0,0,.2); position: relative; cursor: pointer;
+        background: var(--quark-overlay-strong, rgba(0,0,0,.2)); position: relative; cursor: pointer;
         ${transitionCss("background")}
       `);
       ctx.css(`&::before {
@@ -928,7 +928,7 @@
       ctx.el.setAttribute("aria-valuenow", String(pct));
       ctx.el.setAttribute("aria-valuemin", "0");
       ctx.el.setAttribute("aria-valuemax", "100");
-      ctx.css(`height: 8px; border-radius: var(--quark-radius-pill); background: rgba(0,0,0,.08); overflow: hidden; position: relative;`);
+      ctx.css(`height: 8px; border-radius: var(--quark-radius-pill); background: var(--quark-overlay, rgba(0,0,0,.08)); overflow: hidden; position: relative;`);
       const existingFill = ctx.el.querySelector(".quark-progress-fill");
       if (existingFill) existingFill.remove();
       const fill = document.createElement("div");
@@ -963,7 +963,7 @@
     variants: {
       spin: {
         css: `
-          border: 3px solid rgba(0,0,0,.1); border-top-color: var(--quark-accent, #2563eb);
+          border: 3px solid var(--quark-overlay-strong, rgba(0,0,0,.1)); border-top-color: var(--quark-accent, #2563eb);
           border-radius: 50%;
           ${reducedMotion() ? "" : "animation: quark-spin 0.7s linear infinite;"}
         `,
@@ -989,7 +989,7 @@
     base(ctx) {
       ctx.el.setAttribute("aria-hidden", "true");
       ctx.css(`
-        background: linear-gradient(90deg, rgba(0,0,0,.06) 25%, rgba(0,0,0,.11) 37%, rgba(0,0,0,.06) 63%);
+        background: linear-gradient(90deg, var(--quark-overlay, rgba(0,0,0,.06)) 25%, var(--quark-overlay-strong, rgba(0,0,0,.11)) 37%, var(--quark-overlay, rgba(0,0,0,.06)) 63%);
         background-size: 400% 100%; border-radius: var(--quark-radius-sm);
         ${reducedMotion() ? "" : "animation: quark-skeleton 1.4s ease infinite;"}
       `);

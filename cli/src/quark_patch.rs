@@ -48,6 +48,7 @@ const QUARK_UI_JS: &str = include_str!("templates/plugins/quark/quark-ui.js");
 const QUARK_CORE_JS: &str = include_str!("templates/plugins/quark/quark-core.js");
 const QUARK_COMPONENTS_JS: &str = include_str!("templates/plugins/quark/quark-components.js");
 const QUARK_TEMPLATES_JS: &str = include_str!("templates/plugins/quark/quark-templates.js");
+const QUARK_FAMILIES_JS: &str = include_str!("templates/plugins/quark/quark-families.js");
 
 /// Maps a `@useLib quark.<name>` reference to its actual bundled file +
 /// content. Kept in one place so plugin.js's own `QUARK_LIBRARIES` (used
@@ -58,6 +59,7 @@ fn quark_library_file(name: &str) -> Option<(&'static str, &'static str)> {
     match name {
         "components" => Some(("quark-components.js", QUARK_COMPONENTS_JS)),
         "templates" => Some(("quark-templates.js", QUARK_TEMPLATES_JS)),
+        "families" => Some(("quark-families.js", QUARK_FAMILIES_JS)),
         _ => None,
     }
 }
@@ -358,9 +360,10 @@ mod frontend_tests {
         assert!(html.contains("id=\"quarkRoot\""));
         assert!(html.contains("quark-core.js"));
         assert!(html.contains("quark-ui.js"));
-        // No library referenced -> no components/templates script tag.
+        // No library referenced -> no components/templates/families script tag.
         assert!(!html.contains("quark-components.js"));
         assert!(!html.contains("quark-templates.js"));
+        assert!(!html.contains("quark-families.js"));
     }
 
     #[test]
@@ -383,6 +386,48 @@ mod frontend_tests {
         assert!(lib_file.is_file(), "referenced library file must actually be written to disk");
         let unreferenced = dir.path().join(FRONTEND_LIB_DIR_REL).join("quark-templates.js");
         assert!(!unreferenced.is_file(), "unreferenced library must not be written");
+    }
+
+    #[test]
+    fn families_library_stages_correctly_alongside_another_library() {
+        // Regression coverage for the real drift bug found while adding
+        // quark-families.js: quark_library_file()'s match arm and the
+        // three duplicated Quark file copies (templates/plugins/quark,
+        // the cdrca-runtime Back-end and Front-end bundled copies) all
+        // had to be updated together, or @useLib quark.families would
+        // validate at parse time but silently fail to actually stage the
+        // script tag / file here.
+        let dir = tempfile::tempdir().unwrap();
+        fake_frontend(dir.path(), "<html><body></body></html>");
+
+        let mut libs = std::collections::BTreeSet::new();
+        libs.insert(LibRef {
+            plugin_name: "quark".to_string(),
+            library_name: "components".to_string(),
+        });
+        libs.insert(LibRef {
+            plugin_name: "quark".to_string(),
+            library_name: "families".to_string(),
+        });
+        patch_quark_frontend(dir.path(), &libs).unwrap();
+
+        let html = std::fs::read_to_string(dir.path().join(FRONTEND_INDEX_HTML_REL)).unwrap();
+        assert!(html.contains("quark-components.js"));
+        assert!(html.contains("quark-families.js"));
+        assert!(!html.contains("quark-templates.js"), "unreferenced library must still be excluded");
+
+        // families.js must load after core (needs Quark.css) and before
+        // ui.js (load-order comment in patch_quark_frontend's own doc
+        // comment) — checked here as a real string-position assertion,
+        // not just "both tags exist somewhere".
+        let core_pos = html.find("quark-core.js").unwrap();
+        let families_pos = html.find("quark-families.js").unwrap();
+        let ui_pos = html.find("quark-ui.js").unwrap();
+        assert!(core_pos < families_pos, "quark-core.js must load before quark-families.js");
+        assert!(families_pos < ui_pos, "quark-families.js must load before quark-ui.js");
+
+        let lib_file = dir.path().join(FRONTEND_LIB_DIR_REL).join("quark-families.js");
+        assert!(lib_file.is_file(), "referenced families library file must actually be written to disk");
     }
 
     #[test]

@@ -27,6 +27,18 @@ npm install -g cdrca12
 cdrca12 --help
 ```
 
+## Docs
+
+```
+cdrca12 docs <topic>      # cli | animations | quark | plugins | guides
+```
+
+This package doesn't bundle any guide content — `docs` fetches it live
+from the main repo on every call (see [docs/README.md](./docs/README.md)
+for why, and the full topic list). Everything else (`create`, `run`,
+`install`, `publish`, ...) is the real Rust CLI, downloaded by
+`install.js` above.
+
 ## Source
 
 This is a thin wrapper, not the actual implementation — see

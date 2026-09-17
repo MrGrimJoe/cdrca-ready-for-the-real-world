@@ -1,8 +1,10 @@
 # Plugin libraries — `@useLib`
 
 Built-in plugins like Quark can ship more than just their core engine —
-Quark alone has `quark-components.js` (a ~20-component library) and
-`quark-templates.js` (structural scaffolding helpers) as separate,
+Quark alone has `quark-components.js` (a 27-component library),
+`quark-templates.js` (structural scaffolding helpers), and
+`quark-families.js` (named design-token sets — see
+[QUARK.md](./QUARK.md#design-families-quarkfamilies)) as separate,
 optional bundles on top of its required `quark-core.js` engine and
 `quark-ui.js` compatibility shim. As more built-in plugins are added,
 each will likely have its own multi-file library set the same way.
@@ -83,6 +85,27 @@ a way to surface a clear warning instead of a silent, confusing
 "component not found" failure. It's diagnostic bookkeeping, not the
 loading mechanism itself.
 
+## The animations plugin has no bundled libraries of its own — yet
+
+`animations` (the scene/prop/action grammar — `def PROP`, `def ACTION`,
+`use ... as`, `add new action`, see the language guide) is a built-in
+plugin the same way Quark is (`manifest::BUILTIN_PLUGIN_NAMES`), staged
+into every project's `plugins.json` automatically. Unlike Quark, it
+doesn't declare a `libraries` map of its own yet — there's no
+`Plugins/animations/cdrca.json` for `@useLib animations.<n>` to resolve
+against via path 1 (see `resolve_and_stage_one` in
+`plugin_frontend_patch.rs`). That means today, `@useLib animations.<n>`
+only resolves via path 2: an independently published `type: "library"`
+package with `providesFor: { "plugin": "animations", "library": "<n>" }`
+— exactly the same mechanism `quark-icons` uses for Quark in the example
+above, and it works end-to-end already (verified: the resolver's
+fallback path has no allowlist gate, it just matches on plugin+library
+name against whatever's staged in `libraries.json`). If animations ever
+ships its own optional bundle (e.g. a curve/easing library), it'll get
+staged the normal way and start resolving via path 1 instead — no
+`.cdrca` file needs to change either way, since `@useLib` doesn't care
+which of the two paths actually served it.
+
 ## Which of Quark's bundles need `@useLib`
 
 `quark-core.js` (the registry/tokens/mount engine) and `quark-ui.js`
@@ -93,8 +116,9 @@ Only the genuinely optional bundles need declaring:
 
 | `@useLib` name | File | Contents |
 |---|---|---|
-| `quark.components` | `quark-components.js` | The ~20 built-in components (navbar, card, button, modal, etc.) — see [QUARK.md](./QUARK.md#component-reference) for the full list. |
+| `quark.components` | `quark-components.js` | The 27 built-in components (navbar, card, button, modal, etc.) — see [QUARK.md](./QUARK.md#component-reference) for the full list. |
 | `quark.templates` | `quark-templates.js` | Structural scaffolding helpers (`Quark.templates.scaffold(...)`) — optional even if you use components, since most `.cdrca` files author their own HTML structure directly. |
+| `quark.families` | `quark-families.js` | Named design-token sets (`structured`/`soft`/`bold`) applicable whole-app (`Quark.families.setRoot(...)`) or per-component (`= family:<name>` in an `@id` directive) — see [QUARK.md](./QUARK.md#design-families-quarkfamilies). |
 
 A `.cdrca` file that only calls `Quark.UI.mount(...)` for components
 needs `@useLib quark.components`; one that also uses the template
@@ -169,10 +193,17 @@ exists.
 
 `entry` here is the built JS bundle itself, not a `.cdrca` source file.
 `providesFor.plugin` can name a real published `type: "plugin"` package,
-or one of a small built-in allowlist (today: just `"quark"`, since it
-ships inside the CLI rather than as a registry package) —
+or one of a small built-in allowlist — `"quark"` and `"animations"`,
+since both ship inside the CLI rather than as a registry package —
 `manifest::BUILTIN_PLUGIN_NAMES`/`is_builtin_plugin()`, mirrored by the
-registry website's own publish-time validation.
+registry website's own publish-time validation. A `providesFor.plugin`
+outside that list isn't rejected; it just can't be confirmed by this
+offline check, and gets a "not a recognized built-in" note instead of
+silent acceptance — see `Manifest::validate()`. The actual `@useLib
+<name>.<library>` resolution (`plugin_frontend_patch.rs`) never checks
+this allowlist at all — it only decides what a `cdrca publish`/`install`
+of the *library* package itself prints, never whether the library
+loads.
 
 `cdrca install quark-icons` stages it via `library_stage.rs` into a
 project-local index (`libraries.json`, the direct counterpart to

@@ -42,11 +42,12 @@
     <!--
       Quark load order matters: quark-core.js (registry + tokens) must
       run before quark-components.js (registers the built-in component
-      library) and quark-templates.js, which must both run before
-      quark-ui.js (the Quark.UI.mount(...) compatibility shim that
-      generated JS_BLOCK code from @id directives actually calls).
+      library), quark-templates.js, and quark-families.js (design
+      families, reads Quark.css from core), which must all three run
+      before quark-ui.js (the Quark.UI.mount(...) compatibility shim
+      that generated JS_BLOCK code from @id directives actually calls).
       Only plugin.js runs server-side (Back-end/Transpiler/plugin.js
-      require()s it directly); these four files are browser-only and
+      require()s it directly); these five files are browser-only and
       live exclusively here. This raw source checkout always loads all
       four unconditionally — a project scaffolded via
       cdrca-ready-for-the-real-world's CLI instead gets only the
@@ -57,6 +58,7 @@
     <script src="./Transpiler-Plugins/quark/quark-core.js"></script>
     <script src="./Transpiler-Plugins/quark/quark-components.js"></script>
     <script src="./Transpiler-Plugins/quark/quark-templates.js"></script>
+    <script src="./Transpiler-Plugins/quark/quark-families.js"></script>
     <script src="./Transpiler-Plugins/quark/quark-ui.js"></script>
     <script src="./index.js"></script>
     <!-- <script src="./monaco/package/dev/vs/loader.js"></script> -->

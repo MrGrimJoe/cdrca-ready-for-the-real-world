@@ -3,6 +3,14 @@
 All commands are run as `cdrca <command> [args]`. Run `cdrca --version`
 to confirm the CLI is installed and on PATH.
 
+> **`cdrca12 docs <topic>`** (npm install only) isn't listed below — it's
+> not a real subcommand of this binary, it's an `npm/bin/cdrca.js`
+> wrapper convenience that fetches a guide from
+> [docs/guides/](./guides/) live and prints it, intercepted before the
+> binary is ever spawned. It doesn't exist if you installed via the
+> Windows installer or Linux installer script. See
+> [npm/docs/README.md](../npm/docs/README.md).
+
 ## `cdrca login`
 
 Logs in via GitHub OAuth. Opens your browser to the registry's login

@@ -110,12 +110,15 @@ pub struct Manifest {
 }
 
 /// Built-in plugins that ship inside the CLI itself rather than as a
-/// published registry package (today: just Quark — see `quark_patch.rs`).
-/// A `type: "library"` package's `providesFor.plugin` is allowed to name
-/// one of these even though `GET /api/packages/quark` will never resolve
-/// on the registry — see PLUGIN-LIBRARIES.md and the site's own
-/// `server/api.ts` validation (mirrors this list).
-pub const BUILTIN_PLUGIN_NAMES: &[&str] = &["quark"];
+/// published registry package: Quark (`quark_patch.rs`) and the
+/// animations grammar (`Back-end/Transpiler/Plugins/animations/plugin.js`,
+/// staged into every project's bundled `plugins.json` the same way Quark
+/// is). A `type: "library"` package's `providesFor.plugin` is allowed to
+/// name one of these even though `GET /api/packages/<name>` will never
+/// resolve on the registry for either — see PLUGIN-LIBRARIES.md and the
+/// site's own `server/api.ts` validation (mirrors this list; update both
+/// together).
+pub const BUILTIN_PLUGIN_NAMES: &[&str] = &["quark", "animations"];
 
 pub fn is_builtin_plugin(name: &str) -> bool {
     BUILTIN_PLUGIN_NAMES.contains(&name)
@@ -289,6 +292,26 @@ mod tests {
     fn builtin_plugin_allowlist_recognizes_quark() {
         assert!(is_builtin_plugin("quark"));
         assert!(!is_builtin_plugin("some-random-third-party-plugin"));
+    }
+
+    #[test]
+    fn builtin_plugin_allowlist_recognizes_animations() {
+        // animations ships bundled the same way quark does (see
+        // cdrca-runtime's plugins.json) — a third-party `type: "library"`
+        // package targeting it via providesFor should get the same
+        // "recognized built-in" treatment quark gets, not the "can't
+        // confirm this is real" note meant for unknown plugin names.
+        assert!(is_builtin_plugin("animations"));
+    }
+
+    #[test]
+    fn providing_for_animations_is_not_flagged_as_unrecognized() {
+        let mut m = base_manifest(PackageType::Library);
+        m.provides_for = Some(ProvidesFor {
+            plugin: "animations".to_string(),
+            library: "easing-curves".to_string(),
+        });
+        assert!(m.validate().is_ok());
     }
 
     #[test]

@@ -64,6 +64,38 @@
       hairline: "1px solid rgba(0,0,0,.1)",
       hairlineDark: "1px solid rgba(255,255,255,.12)",
     },
+    // Neutral overlay tints — a translucent wash used for subtle fills
+    // (secondary buttons, soft card/input backgrounds, tab-strip
+    // backgrounds, toggle tracks, spinner rings, skeleton shimmer...).
+    // Distinct from `surface` (an opaque background color) and from a
+    // literal black scrim (e.g. a modal backdrop, which should stay
+    // dark regardless of theme — that's intentionally NOT one of these).
+    //
+    // Found via a real contrast check: every existing rgba(0,0,0,...)
+    // neutral tint in quark-components.js assumed a light surface and
+    // became nearly invisible once mixed with a dark family/surface
+    // (e.g. rgba(0,0,0,.06) on #111113 composites to within 1-2 RGB
+    // units of the surface itself, i.e. an all-but-invisible button).
+    //
+    // Components reference these via var(--quark-overlay, <fallback>)
+    // with a light-appropriate literal as their fallback, so an app
+    // with no family applied keeps the exact original light-surface
+    // look. A dark-first family (see quark-families.js's "structured")
+    // overrides these same three generated property names
+    // (--quark-overlay, --quark-overlay-subtle, --quark-overlay-strong)
+    // to their white-based equivalents — the same existing per-family
+    // token-override path used for --quark-surface-*, just extended to
+    // a token group components didn't previously need to override.
+    // "base" is the key name for the bare (no-suffix) property — see
+    // the OVERLAY_BASE_KEY special case in injectTokens() below, since
+    // the generic --quark-${group}-${key} naming used for every other
+    // group would otherwise produce --quark-overlay-base instead of
+    // the bare --quark-overlay every component actually references.
+    overlay: {
+      subtle: "rgba(0,0,0,.03)",
+      base: "rgba(0,0,0,.07)",
+      strong: "rgba(0,0,0,.15)",
+    },
   };
 
   // Root-level custom properties so component CSS can reference
@@ -75,7 +107,15 @@
     const lines = [":root {"];
     for (const [group, values] of Object.entries(QuarkTokens)) {
       for (const [key, value] of Object.entries(values)) {
-        lines.push(`  --quark-${group}-${key}: ${value};`);
+        // Every group generates --quark-<group>-<key>, e.g.
+        // --quark-radius-sm, except overlay's "base" key, which
+        // generates the bare --quark-overlay (no suffix) — the name
+        // every overlay-tint call site in quark-components.js actually
+        // references. See the "overlay" token group's own comment
+        // above for why this one group needs a bare name.
+        const propName =
+          group === "overlay" && key === "base" ? `--quark-overlay` : `--quark-${group}-${key}`;
+        lines.push(`  ${propName}: ${value};`);
       }
     }
     lines.push("}");
@@ -245,7 +285,26 @@
       },
     };
 
-    if (value) el.style.setProperty("--quark-accent", value);
+    // `value` (the optional `= ...` part of an @id directive) has always
+    // meant "accent color" — a raw color string set directly as
+    // --quark-accent. Extended here, backward-compatibly, to also accept
+    // "family:<name>" (e.g. "family:soft"), which instead applies that
+    // whole design family's token set scoped to this element via
+    // Quark.families — see quark-families.js. Every existing .cdrca file
+    // that passes a plain color (hex, named color, rgb(...), ...) keeps
+    // working exactly as before, since those never start with "family:".
+    if (value) {
+      const familyMatch = /^family:(.+)$/.exec(value);
+      if (familyMatch && Quark.families) {
+        Quark.families.applyToElement(elementId, familyMatch[1].trim());
+      } else if (familyMatch) {
+        console.warn(
+          `Quark: "${elementId}" requested "${value}" but quark-families.js isn't loaded (add @useLib quark.families).`
+        );
+      } else {
+        el.style.setProperty("--quark-accent", value);
+      }
+    }
     el.setAttribute("data-quark-component", componentName);
     if (variantName) el.setAttribute("data-quark-variant", variantName);
 
@@ -324,6 +383,42 @@
   Quark.tokens = QuarkTokens;
   Quark.css = { apply: applyCss, remove: removeCss, scope: scopeCss };
   Quark.components = { register, get, list, mount, unmount, getInstance, findPart };
+  // Exposed so a library that needs to inject its OWN :root-scoped CSS
+  // before any component has mounted (e.g. quark-families.js's
+  // setRoot()) can force this base token sheet to exist and be appended
+  // to <head> first — otherwise, since injectTokens() normally only
+  // runs lazily on the first mount() call, a caller who sets something
+  // at :root before ever mounting a component would have their own
+  // <style> tag land first, and this base sheet would then silently
+  // land after it (and win) on that eventual first mount. Verified with
+  // a real jsdom check: without this call first, a family override made
+  // before the first mount() got silently discarded.
+  Quark.__ensureTokensInjected = injectTokens;
+
+  // ---------------------------------------------------------------------
+  // @useLib bookkeeping. Declaring a library does NOT load it at
+  // runtime — see docs/PLUGIN-LIBRARIES.md for why: a .cdrca file's
+  // generated code (including @useLib's own Quark.__declareLib(...) call)
+  // all runs inside a single synchronous eval(), so there's no point
+  // mid-script to pause and inject a <script> tag. The CLI instead
+  // statically scans .cdrca source for @useLib directives at
+  // create/install time and stages only the referenced library
+  // <script> tags into the page ahead of time (see
+  // cli/src/quark_libscan.rs). __declareLib exists purely so a mount()
+  // call can warn — at the point something actually goes wrong,
+  // rather than silently no-op'ing — if a component's library was
+  // apparently never declared, which usually means either the
+  // .cdrca file is missing its @useLib line or the CLI's static scan
+  // didn't see it (e.g. it came from a dynamically-built fileSystem
+  // rather than a file on disk).
+  // ---------------------------------------------------------------------
+  const declaredLibs = new Set(); // "pluginName.libraryName"
+  Quark.__declareLib = function (pluginName, libraryName) {
+    declaredLibs.add(`${pluginName}.${libraryName}`);
+  };
+  Quark.__isLibDeclared = function (pluginName, libraryName) {
+    return declaredLibs.has(`${pluginName}.${libraryName}`);
+  };
 
   global.Quark = Quark;
   if (typeof module !== "undefined") module.exports = Quark;

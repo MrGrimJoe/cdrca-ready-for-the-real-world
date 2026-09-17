@@ -16,12 +16,18 @@ function test(name, fn) {
   // Fresh module registry per test: clear require cache for the three
   // Quark files so each test gets an isolated Quark.components registry.
   delete global.Quark;
-  ["../quark-core.js", "../quark-components.js", "../quark-templates.js"].forEach((p) => {
+  [
+    "../quark-core.js",
+    "../quark-components.js",
+    "../quark-templates.js",
+    "../quark-families.js",
+  ].forEach((p) => {
     delete require.cache[require.resolve(p)];
   });
   require("../quark-core.js");
   require("../quark-components.js");
   require("../quark-templates.js");
+  require("../quark-families.js");
 
   try {
     fn({ document, makeElementWithId, Quark: global.Quark });
@@ -275,6 +281,161 @@ test("template scaffold() creates missing parts without overwriting existing one
   assert.strictEqual(brand.textContent, "My App", "existing brand content must be preserved, not overwritten");
   assert.ok(nav, "missing navigation part should be scaffolded");
   assert.ok(actions, "missing actions part should be scaffolded");
+});
+
+// ---------------------------------------------------------------------
+// Design families
+// ---------------------------------------------------------------------
+//
+// NOTE on what this fake DOM can and can't prove: it has no real CSS
+// cascade/getComputedStyle (see fakedom.js's own header — it only
+// implements what Quark's code calls, not a stylesheet engine), so
+// these tests check the STRUCTURAL contract (the right <style> tag
+// exists, contains the right token values, unknown names warn instead
+// of throwing, back-compat with a plain color value is untouched).
+// The actual cascade-ordering claim families.js makes in its own
+// comments (setRoot()'s override reliably winning even when called
+// before any component has mounted, and a per-element family override
+// coexisting with a differently-configured root) was verified
+// separately against a real jsdom DOM with real getComputedStyle,
+// since that's a claim about browser cascade behavior a fake DOM
+// can't actually exercise.
+
+test("families.list() reports all three built-in families", ({ Quark }) => {
+  const names = Quark.families.list().map((f) => f.name);
+  assert.deepStrictEqual(names.sort(), ["bold", "soft", "structured"]);
+});
+
+test("families.setRoot() injects a :root style tag with that family's tokens", ({ document, Quark }) => {
+  const ok = Quark.families.setRoot("soft");
+  assert.strictEqual(ok, true);
+  const tag = [...document.head.children].find((t) => t.getAttribute("data-quark-style") === "quark-family-root");
+  assert.ok(tag, "expected a quark-family-root style tag");
+  assert.ok(tag.textContent.includes("--quark-radius-sm: 8px"), "soft family's radius-sm should be present");
+  assert.ok(tag.textContent.includes("--quark-accent: #635bff"), "soft family's accent should be present");
+});
+
+test("families.setRoot() also forces the base token sheet to exist first", ({ document, Quark }) => {
+  // Regression check for the real ordering bug found while building this:
+  // calling setRoot() before ANY component had ever mounted used to leave
+  // quark-core.js's own base :root sheet uninjected, so it would land
+  // AFTER (and silently win over) the family's override on the first
+  // future mount. Fixed via Quark.__ensureTokensInjected — this asserts
+  // that hook actually ran as a side effect of setRoot().
+  Quark.families.setRoot("bold");
+  const baseTag = [...document.head.children].find((t) => t.getAttribute("data-quark-style") === "quark-tokens");
+  assert.ok(baseTag, "setRoot() must force the base token sheet to exist, not just its own override");
+});
+
+test("families.applyToElement() scopes tokens under just that element's id", ({ document, makeElementWithId, Quark }) => {
+  makeElementWithId("heroButton");
+  const ok = Quark.families.applyToElement("heroButton", "structured");
+  assert.strictEqual(ok, true);
+  const tag = [...document.head.children].find((t) => t.getAttribute("data-quark-style") === "quark:heroButton:family");
+  assert.ok(tag, "expected a per-element family style tag");
+  assert.ok(tag.textContent.includes("#heroButton"), "override must be scoped under the element's id, not :root");
+  assert.ok(tag.textContent.includes("--quark-radius-sm: 3px"), "structured family's radius-sm should be present");
+});
+
+test("families.setRoot() with an unknown name warns and returns false, does not throw", ({ Quark }) => {
+  assert.doesNotThrow(() => {
+    const ok = Quark.families.setRoot("doesNotExist");
+    assert.strictEqual(ok, false);
+  });
+});
+
+test("mount() with value='family:<name>' delegates to families.applyToElement", ({ makeElementWithId, Quark }) => {
+  const el = makeElementWithId("navA");
+  Quark.components.mount("navA", "navbar", ["modern"], "family:soft");
+  const tag = [...global.document.head.children].find((t) => t.getAttribute("data-quark-style") === "quark:navA:family");
+  assert.ok(tag, "a family: value should produce a scoped family style tag, not a plain accent");
+  assert.strictEqual(el.style.getPropertyValue("--quark-accent"), "", "family: values must NOT also set a raw accent color");
+});
+
+test("mount() with a plain color value keeps working exactly as before (back-compat)", ({ makeElementWithId, Quark }) => {
+  const el = makeElementWithId("navB");
+  Quark.components.mount("navB", "navbar", ["modern"], "#2563eb");
+  assert.strictEqual(el.style.getPropertyValue("--quark-accent"), "#2563eb");
+});
+
+// ---------------------------------------------------------------------
+// Real WCAG contrast regressions found by auditing every component
+// against every family (see quark-families.js's header comment for the
+// one limitation this audit found but deliberately did not fix here).
+// These pin the actual fixes so they can't silently regress: overlay
+// tokens flipping correctly for a dark-first family, and the bold
+// family's accent clearing AA 4.5:1 as a white-text background.
+// ---------------------------------------------------------------------
+
+function relLuminance(r, g, b) {
+  const f = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrastRatio(rgb1, rgb2) {
+  const l1 = relLuminance(...rgb1);
+  const l2 = relLuminance(...rgb2);
+  const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+function hexToRgb(hex) {
+  hex = hex.replace("#", "");
+  return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+}
+
+test("structured family's overlay tokens are white-based, not the light-surface default (dark-surface contrast fix)", ({ Quark }) => {
+  const structured = Quark.families._definitions.structured.vars;
+  assert.ok(structured["--quark-overlay"], "structured must override --quark-overlay for its dark surface");
+  const rgbaMatch = /rgba\(255,\s*255,\s*255/.exec(structured["--quark-overlay"]);
+  assert.ok(rgbaMatch, `structured's --quark-overlay must be white-based, got: ${structured["--quark-overlay"]}`);
+});
+
+test("bold family's accent clears WCAG AA 4.5:1 as a white-text button background (regression: original #ff5a1f only reached 3.12:1)", ({ Quark }) => {
+  const bold = Quark.families._definitions.bold.vars;
+  const ratio = contrastRatio([255, 255, 255], hexToRgb(bold["--quark-accent"]));
+  assert.ok(ratio >= 4.5, `bold accent ${bold["--quark-accent"]} only reaches ${ratio.toFixed(2)}:1 with white text, needs >= 4.5`);
+});
+
+test("every family's accent clears at least AA-large (3:1) as a white-text button background", ({ Quark }) => {
+  for (const { name } of Quark.families.list()) {
+    const vars = Quark.families._definitions[name].vars;
+    const ratio = contrastRatio([255, 255, 255], hexToRgb(vars["--quark-accent"]));
+    assert.ok(ratio >= 3.0, `${name}'s accent ${vars["--quark-accent"]} only reaches ${ratio.toFixed(2)}:1 with white text`);
+  }
+});
+
+test("every family's effective accent-TEXT color (--quark-accent-text if set, else --quark-accent) clears WCAG AA 4.5:1 against that family's own default surface (regression: structured's plain accent as text was only 3.51:1 on its dark surface)", ({ Quark }) => {
+  for (const { name } of Quark.families.list()) {
+    const vars = Quark.families._definitions[name].vars;
+    const accentText = vars["--quark-accent-text"] || vars["--quark-accent"];
+    // structured is dark-first (its own --quark-surface-dark is the
+    // default surface text-role accent sits on); soft/bold are
+    // light-first (--quark-surface-light).
+    const surfaceKey = name === "structured" ? "--quark-surface-dark" : "--quark-surface-light";
+    const surface = hexToRgb(vars[surfaceKey]);
+    const ratio = contrastRatio(surface, hexToRgb(accentText));
+    assert.ok(
+      ratio >= 4.5,
+      `${name}'s effective accent-text ${accentText} only reaches ${ratio.toFixed(2)}:1 against its own ${surfaceKey} ${vars[surfaceKey]}`
+    );
+  }
+});
+
+test("quark-components.js only points text-role CSS ('color: ...') at --quark-accent-text, never at bare --quark-accent for a color declaration", () => {
+  const fs = require("fs");
+  const src = fs.readFileSync(path.join(__dirname, "../quark-components.js"), "utf8");
+  // Negative lookbehind excludes "accent-color:" and "border-top-color:"
+  // (real, intentionally-unchanged non-text uses) — only matches the
+  // actual CSS "color:" text-color property.
+  const bareAccentAsColor = /(?<![-\w])color:\s*var\(--quark-accent,/g;
+  const matches = src.match(bareAccentAsColor) || [];
+  assert.strictEqual(
+    matches.length,
+    0,
+    `found ${matches.length} "color: var(--quark-accent, ...)" call site(s) that should read --quark-accent-text instead: ${JSON.stringify(matches)}`
+  );
 });
 
 // ---------------------------------------------------------------------

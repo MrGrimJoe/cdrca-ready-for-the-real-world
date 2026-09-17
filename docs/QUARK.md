@@ -1,5 +1,13 @@
 # Quark — the built-in `@directive` UI component layer
 
+> **New to Quark?** This page is the internals/mechanism reference — how
+> it's wired into CDRCA, the component registry, the token system, how to
+> add a new component. For a tutorial and the full directive/component
+> syntax you'll actually type, start with
+> **[QUARK-SYNTAX.md](./guides/QUARK-SYNTAX.md)** instead, then come back
+> here once you want to know *how* it works rather than just *how to use*
+> it.
+
 Quark lets a `.cdrca` file apply a prebuilt, reusable UI component to a real
 HTML element with one line, instead of hand-coding it:
 
@@ -162,13 +170,15 @@ at all. What's new is entirely in how the runtime (`quark-core.js`)
 ## Declaring which library bundles you use: `@useLib`
 
 Quark ships more than just its `@id component.variant` engine — the
-component library itself (`quark-components.js`) and the structural
-scaffolding helpers (`quark-templates.js`) are separate, optional
+component library itself (`quark-components.js`), the structural
+scaffolding helpers (`quark-templates.js`), and the design-families
+token sets (`quark-families.js`, see below) are separate, optional
 bundles. A `.cdrca` file declares which ones it actually needs with:
 
 ```
 @useLib quark.components
 @useLib quark.templates
+@useLib quark.families
 ```
 
 Only bundles you actually reference get loaded into the page — a file
@@ -184,6 +194,86 @@ pause and inject a new `<script>` tag.
 `quark-core.js` (the engine) and `quark-ui.js` (the compatibility shim)
 are always loaded regardless — they're Quark's required runtime, not
 optional libraries, so they never need a `@useLib` line.
+
+## Design families: `quark.families`
+
+Every component already reads shared tokens
+(`var(--quark-radius-sm)`, `var(--quark-shadow-md)`,
+`var(--quark-accent)`, ...) instead of hardcoded values — see "The
+variant system" below. A *family* is just an alternate, named set of
+those same token values, built to resemble a real, recognizable
+product aesthetic rather than one generic look wearing different
+variant names. Three ship today:
+
+| Family | Aesthetic | Modeled loosely on |
+|---|---|---|
+| `structured` | Dark-first, sharp corners, tight spacing, flat hairline shadows | Linear / Vercel / Raycast |
+| `soft` | Light-first, generous rounded corners, soft diffuse shadows, roomy spacing | Stripe / Notion |
+| `bold` | Heavier type, higher contrast, bigger touch targets, assertive fills | Attio / Arc |
+
+Apply a family to the whole app:
+
+```js
+Quark.families.setRoot("structured");
+```
+
+Or override just one component, independent of whatever the rest of
+the app is using — this is what makes hybrids ("a soft-styled button
+in an otherwise structured app") work with zero special-casing, since
+it rides the exact same per-element CSS-scoping mechanism every
+component's own variant/modifier CSS already uses:
+
+```
+@myButton button.primary = family:soft
+```
+
+A plain color value still works exactly as before and is unaffected —
+`family:` is only recognized as a prefix, so `= #2563eb` keeps setting
+`--quark-accent` directly, same as always. `Quark.families.list()`
+returns the full set with a one-line description of each, and
+`Quark.families.applyToElement(elementId, familyName)` /
+`Quark.families.setRoot(familyName)` are directly callable from
+outside a `.cdrca` directive too, e.g. from a `js { ... }` block or
+your own app code.
+
+Families only ever override token names components already read
+(space/radius/font/shadow/transition/surface/border/overlay, plus
+`--quark-accent`), with one deliberate, clearly-labeled exception in
+`quark-families.js` itself (`--quark-font-mono`, included for a future
+component to opt into — no shipped component reads it yet, so setting
+it alone won't visibly change anything today).
+
+**Verified with a real WCAG contrast audit** (rendering every
+component × every variant × every family and computing actual
+contrast ratios, not eyeballing swatches) — this caught and fixed two
+real defects: several components used a hardcoded light-surface-only
+neutral tint (`rgba(0,0,0,...)`) for things like secondary buttons,
+toggle tracks, and skeleton shimmer, which became nearly invisible on
+the dark-first `structured` family's surface (contrast delta of ~1
+RGB unit in the worst case). Fixed by introducing an `overlay` token
+group (`--quark-overlay`, `--quark-overlay-subtle`,
+`--quark-overlay-strong`) that every family now sets appropriately for
+its own surface. Separately, `bold`'s original accent (`#ff5a1f`) only
+reached 3.12:1 contrast as a white-text button background — below
+WCAG AA's 4.5:1 for normal text — and has been darkened to `#d1440e`
+(4.62:1) while keeping the same hue.
+
+One limitation the same audit found, **now fixed**: `--quark-accent` was
+being asked to serve two contrast-opposite roles — a solid fill with
+white text on top (needs darker/more saturated), and accent-colored text
+sitting directly on a surface (needs lighter, especially against a dark
+surface). No single value clears AA 4.5:1 in both roles at once. Fixed
+with a second token, `--quark-accent-text`, read only by the ~6 real
+text-role call sites in `quark-components.js` (button/badge
+outlined/soft/flat text, the active tab label) — everything else
+(fills, borders, focus rings, native `accent-color`, the loader ring)
+stays on plain `--quark-accent`, since those only need the looser 3:1
+non-text UI threshold, which was never failing. Only `structured` sets
+`--quark-accent-text` explicitly (its own default accent falls to
+~3.51:1 as text against its own dark surface); `soft` and `bold` already
+clear 4.5:1 as text on their own light surfaces and intentionally leave
+it unset, falling back to `--quark-accent` — see `quark-families.js`'s
+header comment for the exact numbers and reasoning.
 
 ## Three separate concepts
 
@@ -414,156 +504,12 @@ becomes closable (with its own toggle, not just a CSS class) via the
 
 ## Component reference
 
-For every component: **target** = the element the directive points at,
-**component** = the `<preset>` name, common **variants**, common
-**modifiers**, expected HTML shape, and an example.
-
-### Layout / navigation
-
-#### `navbar`
-- Variants: `modern` (default), `glass`, `minimal`, `floating`, `compact`,
-  `enterprise`, `dark`
-- Modifiers: `sticky`, `fixed`, `centered`, `full-width`, `bordered`,
-  `elevated`
-- Parts: `brand`, `navigation`, `actions`, `mobileMenu`
-- Expected HTML: `<div id="mainNav"><div class="brand">...</div><nav>...</nav></div>`
-- Example: `@mainNav navbar.glass.sticky`
-
-#### `sidebar`
-- No declared variants (preserves exact original behavior) — every token in
-  the chain is a modifier.
-- Modifiers: `edgy`, `rounded`, `compact`, `closable` (behavioral — real
-  close button; sidebars are non-closable by default)
-- Parts: `header`, `navigation`, `footer`
-- Expected HTML: `<div id="sidebar"><div class="logo">...</div><div class="navigation">...</div></div>`
-- Example: `@sidebar sidebar.closable.edgy = #2563eb`
-
-#### `tabs`
-- Variants: `modern` (default), `pill`, `minimal`
-- Modifiers: `centered`, `full-width`
-- Parts: `tablist`, `panels`
-- Expected HTML: `<div id="tabs"><div class="tablist"><button>One</button><button>Two</button></div></div>`
-- Example: `@tabs tabs.pill`
-
-#### `breadcrumb`
-- Variants: `modern` (default), `minimal`
-- Expected HTML: `<div id="crumbs"><a href="/">Home</a><a href="/docs">Docs</a></div>`
-- Example: `@crumbs breadcrumb.minimal`
-
-#### `pagination`
-- Variants: `modern` (default), `pill`, `minimal`
-- Expected HTML: `<div id="pages"><button>Prev</button><button>1</button><button>Next</button></div>`
-- Example: `@pages pagination.pill`
-
-### Content
-
-#### `card`
-- Variants: `modern` (default), `elevated`, `flat`, `outlined`, `glass`, `soft`
-- Modifiers: `bordered`, `rounded`, `sharp`, `compact`, `spacious`,
-  `interactive` (behavioral — hover lift)
-- Parts: `header`, `body`, `footer`
-- Expected HTML: `<div id="profileCard"><h2>Profile</h2><p>...</p><button>Edit</button></div>`
-- Example: `@profileCard card.elevated`
-
-#### `badge`
-- Variants: `solid` (default), `outlined`, `soft`
-- Modifiers: `pill`, `dense`
-- Example: `@statusBadge badge.outlined`
-
-#### `avatar`
-- Variants: `circle` (default), `rounded`, `sharp`
-- Modifiers: `bordered`, `sm`, `lg`
-- Example: `@userAvatar avatar.rounded`
-
-#### `alert`
-- Variants: `info` (default), `success`, `warning`, `danger`
-- Modifiers: `dismissible` (behavioral), `bordered`
-- Example: `@formAlert alert.success.dismissible`
-
-#### `callout`
-- Variants: `modern` (default), `soft`, `editorial`
-- Example: `@tip callout.soft`
-
-### Forms
-
-#### `button`
-- Variants: `primary` (default), `secondary`, `outlined`, `solid`, `soft`, `flat`
-- Modifiers: `pill`, `sharp`, `compact`, `full-width`, `elevated`
-- Example: `@loginButton button.outlined`
-
-#### `input` / `textarea` / `select`
-- Variants: `modern` (default), `minimal`, `soft`
-- Modifiers: `bordered`, `rounded`, `full-width`
-- Example: `@emailInput input.bordered.full-width`
-
-#### `checkbox` / `radio`
-- Variant: `modern` (default)
-- Example: `@agree checkbox.modern`
-
-#### `toggle`
-- Variants: `modern` (default), `pill`
-- Expected HTML: `<input id="darkMode" type="checkbox" />`
-- Example: `@darkMode toggle.pill`
-
-#### `form`
-- Variants: `modern` (default), `compact`, `spacious`
-- Parts: `fields`, `actions`
-- Example: `@loginForm form.spacious`
-
-### Overlays / interaction
-
-#### `modal`
-- Variants: `modern` (default), `glass`, `minimal`
-- Modifiers: `rounded`, `sharp`
-- Parts: `header`, `body`, `footer`
-- Behavior: escape-to-close, focus trap, backdrop click-to-close, real
-  open/close (`el.quarkOpen()` / `el.quarkClose()`)
-- Expected HTML: `<div id="confirmModal" hidden><h2>Confirm</h2><p>...</p></div>`
-- Example: `@confirmModal modal.glass`
-
-#### `dropdown`
-- Variants: `modern` (default), `minimal`
-- Parts: `trigger` (required), `menu` (required)
-- Behavior: click-to-open, click-outside-to-close, escape-to-close
-- Expected HTML: `<div id="userMenu"><button class="trigger">Account</button><div class="menu">...</div></div>`
-- Example: `@userMenu dropdown.modern`
-
-#### `tooltip`
-- Variants: `modern` (default), `dark`, `light`
-- Requires a `data-tooltip="..."` attribute on the target element
-- Expected HTML: `<button id="helpIcon" data-tooltip="More info">?</button>`
-- Example: `@helpIcon tooltip.dark`
-
-#### `popover`
-- Variant: `modern` (default)
-- Parts: `trigger` (required), `content` (required)
-- Example: `@infoPop popover.modern`
-
-#### `toast`
-- Variants: `modern` (default), `success`, `danger`
-- Modifiers: `dismissible`
-- Behavior: entrance transition on mount
-- Example: `@saveToast toast.success.dismissible`
-
-#### `accordion`
-- Variants: `modern` (default), `bordered`
-- Expected HTML: `<div id="faq"><div class="item"><button class="header">Q1</button><div class="panel">A1</div></div></div>`
-- Example: `@faq accordion.bordered`
-
-### Status
-
-#### `progress`
-- Variants: `modern` (default), `pill`, `flat`
-- Requires a `data-progress="0-100"` attribute
-- Example: `@uploadBar progress.pill`
-
-#### `loader`
-- Variant: `spin` (default)
-- Example: `@spinner loader.spin`
-
-#### `skeleton`
-- Variant: `modern` (default)
-- Example: `@cardSkeleton skeleton.modern`
+The full component-by-component reference — every variant, modifier,
+expected HTML shape, and example — now lives in
+[QUARK-SYNTAX.md](./guides/QUARK-SYNTAX.md#component-reference), alongside
+the rest of the directive syntax, so there's one canonical copy instead of
+two that can drift apart. This file stays focused on how the registry
+mechanism itself works (below), not the list of what's registered.
 
 ## One real limitation, not hidden
 
@@ -593,6 +539,7 @@ copy, loaded via `<script>` tags into the actual page CDRCA's
 | `.../quark/quark-ui.js` | The `Quark.UI.mount(...)` compatibility shim — the exact call shape `plugin.js`'s generated code invokes. Loaded last. | Always |
 | `.../quark/quark-components.js` | The built-in component library. Loaded between `quark-core.js` and `quark-ui.js`. | Only if some `.cdrca` file in the project has `@useLib quark.components` |
 | `.../quark/quark-templates.js` | Structural scaffolding helpers. Loaded between `quark-core.js` and `quark-ui.js`. | Only if some `.cdrca` file in the project has `@useLib quark.templates` |
+| `.../quark/quark-families.js` | Design-family token sets (`structured`/`soft`/`bold`). Loaded between `quark-core.js` and `quark-ui.js`. | Only if some `.cdrca` file in the project has `@useLib quark.families` |
 | `node_modules/cdrca/Front-end/index.html` | Patched with a managed `<!-- QUARK:START -->...<!-- QUARK:END -->` block: a persistent `#quarkRoot` container plus whichever `<script>` tags apply per the row above. | Always re-patched (see below) |
 
 All of this is (re-)written by `cli/src/quark_patch.rs` every time

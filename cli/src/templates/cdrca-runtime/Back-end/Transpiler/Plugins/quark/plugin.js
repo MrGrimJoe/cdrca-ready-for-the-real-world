@@ -63,6 +63,7 @@ function isNewlineToken(t) {
 const QUARK_LIBRARIES = {
   components: "quark-components.js",
   templates: "quark-templates.js",
+  families: "quark-families.js",
 };
 
 function quarkCustomRule(currentValue, ctx) {

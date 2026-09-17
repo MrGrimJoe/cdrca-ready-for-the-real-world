@@ -178,6 +178,12 @@ picker, then a name prompt — this path is independent of the terminal
 one above), then use the ▶ run button in the editor toolbar on any
 `.cdrca` file.
 
+**New to this tooling?** [docs/guides/](./docs/guides/) is a tutorial
+path — CLI walkthrough, the `animations` scene/prop/action syntax, the
+`quark` `@directive` syntax and component reference, and how to build
+your own plugin or library — kept separate from the internals docs linked
+below.
+
 ## CLI commands, at a glance
 
 Full details, flags, and examples for every command are in
@@ -260,6 +266,9 @@ local store health).
 
 ## Documentation
 
+- **[docs/guides/](./docs/guides/) — tutorials and syntax references,
+  start here.** CLI walkthrough, the `animations` and `quark` plugins'
+  full syntax, and how to build your own plugin or library.
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — how the CLI, registry
   API, local package store, and installer fit together; the GitHub-backed
   install model; the local port-patching mechanism and why it exists.
@@ -270,8 +279,10 @@ local store health).
 - [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md) — the
   permissions/`uses` model for plugin-type packages.
 - [docs/QUARK.md](./docs/QUARK.md) — the built-in `@directive` UI component layer:
-  syntax, presets/modifiers, how it's wired in, and its current
-  not-active-yet status.
+  the registry/token mechanics and how it's wired in (verified working
+  end-to-end against a real CDRCA transpile — see its Status section).
+  For the syntax itself and the full component reference, see
+  [docs/guides/QUARK-SYNTAX.md](./docs/guides/QUARK-SYNTAX.md) instead.
 - [docs/PLUGIN-LIBRARIES.md](./docs/PLUGIN-LIBRARIES.md) — the
   `@useLib` directive: how a `.cdrca` file opts into a plugin's optional
   library bundles, and how a `type: "library"` package can extend a
