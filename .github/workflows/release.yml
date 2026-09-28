@@ -156,6 +156,16 @@ jobs:
       - name: Install Rust toolchain (for building the CLI itself)
         uses: dtolnay/rust-toolchain@stable
 
+      # Runs the unit tests too, not just a build -- a plugin registered in
+      # plugins.json but missing from cdrca_bundle.rs's BUNDLED_FILES
+      # compiles fine and only fails here (ember/campfire shipped that
+      # way once before this step existed). Linux job only: the tests are
+      # platform-independent, so running them twice would just be slower.
+      # A failure here stops the release before any asset is built.
+      - name: Run cargo test
+        working-directory: cli
+        run: cargo test
+
       - name: Build cdrca (release)
         id: build_cli
         working-directory: cli
