@@ -1,4 +1,4 @@
-# Plugin libraries — `@useLib`
+# Plugin libraries — `load`
 
 Built-in plugins like Quark can ship more than just their core engine —
 Quark alone has `quark-components.js` (a 27-component library),
@@ -11,21 +11,23 @@ each will likely have its own multi-file library set the same way.
 
 Unconditionally loading every bundle from every plugin into every
 project's page doesn't scale — most `.cdrca` files won't touch most of
-a given plugin's library surface. `@useLib` is how a `.cdrca` file
+a given plugin's library surface. `load` is how a `.cdrca` file
 declares which specific library bundles it actually needs, so only
-those get loaded into the page.
+those get loaded into the page. (The rest of this doc talks about the
+directive's internals under its older name, `@useLib` — `load` compiles
+to exactly that; see "What `load` actually compiles to" below.)
 
 ## Syntax
 
 ```
-@useLib <pluginName>.<libraryName>
+load <pluginName>.<libraryName>
 ```
 
 Example, in a file that uses Quark's component library but not its
 template scaffolding:
 
 ```
-@useLib quark.components
+load quark.components
 
 @mainNav navbar.glass
 @profileCard card.elevated

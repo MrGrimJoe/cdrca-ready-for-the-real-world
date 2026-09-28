@@ -1,6 +1,12 @@
 let ObjectAnimationSystem = function () {
   // Core renderer dont edit
-  function CORE_3dFramesRenderer(FPS, loopAtEnd, ObjectsOverTime, gradientMap) {
+  function CORE_3dFramesRenderer(
+    FPS,
+    loopAtEnd,
+    ObjectsOverTime,
+    gradientMap,
+    renderMode
+  ) {
     const DeltaFrame = 1 / FPS;
     let totalFrames = 0;
     let currentOOT = 0;
@@ -18,9 +24,43 @@ let ObjectAnimationSystem = function () {
       1000
     );
 
-    const canvas = document.getElementById("THRREjsRender");
+    // renderMode (see animations-backdrop.js): `background` in a .cdrca file
+    // draws behind the whole page or one element instead of into the page's
+    // own <canvas id="THRREjsRender">. Two shapes reach here:
+    //   { mode: "background", target }  this file's own scene — the canvas is
+    //                                   created and placed by Backdrop.place()
+    //   { canvas, host }                a compiled `background from "x.cdrca"`
+    //                                   program, whose canvas Backdrop.attach()
+    //                                   already placed
+    // Without renderMode this is the original behaviour, untouched.
+    let bg = null;
+    if (renderMode) {
+      if (typeof Backdrop === "undefined") {
+        console.warn(
+          "background was requested but animations-backdrop.js is not loaded — drawing to the default canvas instead."
+        );
+      } else {
+        try {
+          bg = renderMode.canvas
+            ? Backdrop.adopt(renderMode.canvas, renderMode.host)
+            : Backdrop.place(renderMode.target || null);
+        } catch (err) {
+          console.error("background:", err && err.message);
+        }
+      }
+    }
+    const canvas = bg ? bg.canvas : document.getElementById("THRREjsRender");
     const renderer = new THREE.WebGLRenderer({ canvas: canvas });
-    renderer.setSize(window.innerWidth / 2, window.innerHeight / 2);
+    function sizeToTarget() {
+      const { width, height } = bg.size();
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      // updateStyle=false: Backdrop already made the canvas fill its
+      // container with CSS; only the drawing buffer's resolution changes.
+      renderer.setSize(width, height, false);
+    }
+    if (bg) sizeToTarget();
+    else renderer.setSize(window.innerWidth / 2, window.innerHeight / 2);
 
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(5, 10, 7.5);
@@ -151,9 +191,11 @@ let ObjectAnimationSystem = function () {
     var ForcedHult = false;
     function instantHault() {
       ForcedHult = true;
+      stopWatchingSize();
     }
     function instantUnhault() {
       ForcedHult = false;
+      startWatchingSize();
     }
     function animate(timestamp) {
       if (!ForcedHult) requestAnimationFrame(animate);
@@ -189,11 +231,28 @@ let ObjectAnimationSystem = function () {
       renderer.render(scene, camera);
     }
 
-    window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    // Background mode watches its own container and stops when halted, so a
+    // stopped scene doesn't keep resizing a canvas it no longer owns. The
+    // default mode keeps its original window-resize listener.
+    let stopWatching = null;
+    function startWatchingSize() {
+      if (bg && !stopWatching) stopWatching = bg.watch(sizeToTarget);
+    }
+    function stopWatchingSize() {
+      if (stopWatching) {
+        stopWatching();
+        stopWatching = null;
+      }
+    }
+    if (bg) {
+      startWatchingSize();
+    } else {
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
 
     return {
       goToNextOOT: () => currentOOT++,
@@ -405,13 +464,14 @@ let ObjectAnimationSystem = function () {
         BouncingSphereProp,
       },
       Scene,
-      init(FPS, loopAtEnd, scenes, gradientMap) {
+      init(FPS, loopAtEnd, scenes, gradientMap, renderMode) {
         const objectsOverTime = scenes.map((scene) => scene.getConfig());
         const renderer = CORE_3dFramesRenderer(
           FPS,
           loopAtEnd,
           objectsOverTime,
-          gradientMap
+          gradientMap,
+          renderMode
         );
         renderer.init();
         return renderer;
@@ -473,7 +533,8 @@ let ObjectAnimationSystem = function () {
         FPS,
         loopAtEnd,
         scenes,
-        gradientMap
+        gradientMap,
+        PSA.renderMode
       );
       // Expose renderer controls at the edge
       return {

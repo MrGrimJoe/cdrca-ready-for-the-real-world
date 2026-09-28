@@ -38,7 +38,7 @@
     <script src="./three.js"></script>
     
     <script src="./Renderer.js"></script>
-    <script src="./parser.js"></script>
+    <script src="./Parser.js"></script>
     <!--
       Quark load order matters: quark-core.js (registry + tokens) must
       run before quark-components.js (registers the built-in component
@@ -60,6 +60,17 @@
     <script src="./Transpiler-Plugins/quark/quark-templates.js"></script>
     <script src="./Transpiler-Plugins/quark/quark-families.js"></script>
     <script src="./Transpiler-Plugins/quark/quark-ui.js"></script>
+    <!--
+      animations-backdrop.js: the runtime behind the `background
+      <targetId> from "<path>"` statement (part of the animations
+      plugin, not a separate one — see Back-end/Transpiler/Plugins/
+      animations/plugin.js's "background" case). This raw source
+      checkout always loads it unconditionally, same as Quark's five
+      files above; a real scaffolded project needs `@useLib
+      animations.backdrop` for it instead — see
+      docs/ANIMATIONS-SYNTAX.md.
+    -->
+    <script src="./Transpiler-Plugins/animations/animations-backdrop.js"></script>
     <script src="./index.js"></script>
     <!-- <script src="./monaco/package/dev/vs/loader.js"></script> -->
   </body>

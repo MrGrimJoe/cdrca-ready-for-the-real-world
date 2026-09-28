@@ -35,6 +35,11 @@ const PLACEHOLDER_FIND: &str =
 const PLACEHOLDER_REPLACE: &str =
     "placeholder: [\"ACTION_DEF\", \"PROP_DEF\", \"PROP_USE\", \"ACTION_USE\", \"JS_BLOCK\"],\n      toString: general3DastToSTRplaceholder,";
 const PLACEHOLDER_MARKER: &str = "\"ACTION_DEF\", \"PROP_DEF\", \"PROP_USE\", \"ACTION_USE\", \"JS_BLOCK\"";
+/// A copy that already emits JS_BLOCK statements from its own dedicated slot
+/// (right after `OAS_OBJ` is built — this CLI's bundled runtime does) must
+/// not ALSO get `JS_BLOCK` added to the placeholder group above: that emits
+/// every block a second time, before `OAS_OBJ` exists.
+const DEDICATED_SLOT_MARKER: &str = "placeholder: [\"JS_BLOCK\"],";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum FullTranspilerPatchOutcome {
@@ -65,7 +70,8 @@ pub fn patch_js_block_output(project_root: &Path) -> Result<FullTranspilerPatchO
         .with_context(|| format!("reading {}", target.display()))?;
 
     let inputs_done = contents.contains(INPUTS_MARKER);
-    let placeholder_done = contents.contains(PLACEHOLDER_MARKER);
+    let placeholder_done =
+        contents.contains(PLACEHOLDER_MARKER) || contents.contains(DEDICATED_SLOT_MARKER);
     if inputs_done && placeholder_done {
         return Ok(FullTranspilerPatchOutcome::AlreadyPatched);
     }
@@ -151,6 +157,22 @@ mod tests {
         .unwrap();
         assert!(patched.contains("JS_BLOCK: []"));
         assert!(patched.contains("\"ACTION_USE\", \"JS_BLOCK\"]"));
+    }
+
+    #[test]
+    fn leaves_a_copy_with_a_dedicated_js_block_slot_alone() {
+        // The bundled runtime emits JS_BLOCK from its own slot; adding it to
+        // the placeholder group too would run every block twice.
+        let dir = tempfile::tempdir().unwrap();
+        let fixed = "let inputs = {\n      errorsLOGS: [],\n      scenes: [],\n      JS_BLOCK: [],\n    };\nplaceholder: [\"ACTION_DEF\", \"PROP_DEF\", \"PROP_USE\", \"ACTION_USE\"],\n      toString: general3DastToSTRplaceholder,\nplaceholder: [\"JS_BLOCK\"],\n";
+        fake_full_transpiler(dir.path(), fixed);
+        let outcome = patch_js_block_output(dir.path()).unwrap();
+        assert_eq!(outcome, FullTranspilerPatchOutcome::AlreadyPatched);
+        let after = std::fs::read_to_string(
+            dir.path().join("node_modules/cdrca/Back-end/Transpiler/FullTranspiler.js"),
+        )
+        .unwrap();
+        assert_eq!(after, fixed, "must not be modified");
     }
 
     #[test]

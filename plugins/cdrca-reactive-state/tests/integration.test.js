@@ -32,15 +32,41 @@ if (!RUNTIME_PATH) {
   process.exit(0);
 }
 
-const transpilerDir = path.join(RUNTIME_PATH, "Back-end", "Transpiler");
+// This test stages plugins and patches files on the checkout it runs against
+// (see ensurePatched below). It used to do that directly on CDRCA_RUNTIME_PATH,
+// which silently rewrote plugins.json and dropped a stray plugin file into
+// whatever real tree you pointed it at — twice, in practice. It now works on
+// a throwaway copy of the back-end and never touches the path you give it.
+const os = require("os");
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "cdrca-integration-"));
+fs.cpSync(path.join(RUNTIME_PATH, "Back-end"), path.join(WORK_ROOT, "Back-end"), {
+  recursive: true,
+  filter: (src) => !src.split(path.sep).includes("node_modules"),
+});
+// Dependencies (prettier, ...) resolve from the original checkout.
+if (fs.existsSync(path.join(RUNTIME_PATH, "node_modules"))) {
+  fs.symlinkSync(
+    path.join(RUNTIME_PATH, "node_modules"),
+    path.join(WORK_ROOT, "node_modules"),
+    "dir"
+  );
+}
+process.on("exit", () => fs.rmSync(WORK_ROOT, { recursive: true, force: true }));
+
+const transpilerDir = path.join(WORK_ROOT, "Back-end", "Transpiler");
 const fullTranspilerPath = path.join(transpilerDir, "FullTranspiler.js");
 const pluginHostPath = path.join(transpilerDir, "plugin.js");
 const pluginsDir = path.join(transpilerDir, "Plugins");
 
 function ensurePatched(filePath, checks) {
   let src = fs.readFileSync(filePath, "utf8");
-  for (const { find, replace, alreadyDoneMarker } of checks) {
+  for (const { find, replace, alreadyDoneMarker, alsoDoneMarker } of checks) {
     if (src.includes(alreadyDoneMarker)) continue;
+    // A checkout that already emits JS_BLOCK statements from its own
+    // dedicated slot (right after OAS_OBJ is built — this repo's bundled
+    // runtime) must NOT also get JS_BLOCK added to the placeholder group:
+    // that emits every block a second time, before OAS_OBJ exists.
+    if (alsoDoneMarker && src.includes(alsoDoneMarker)) continue;
     if (!src.includes(find)) {
       throw new Error(`integration test setup: expected snippet not found in ${filePath}: ${find}`);
     }
@@ -49,9 +75,8 @@ function ensurePatched(filePath, checks) {
   fs.writeFileSync(filePath, src);
 }
 
-// NOTE: this mutates the checkout at CDRCA_RUNTIME_PATH on disk (idempotent
-// — safe to run repeatedly). Point CDRCA_RUNTIME_PATH at a disposable
-// checkout, not one you care about keeping pristine.
+// NOTE: this mutates the throwaway copy made above (WORK_ROOT), not the
+// checkout at CDRCA_RUNTIME_PATH.
 ensurePatched(fullTranspilerPath, [
   {
     find: '      errorsLOGS: [],\n      scenes: [],\n    };',
@@ -64,6 +89,7 @@ ensurePatched(fullTranspilerPath, [
     replace:
       'placeholder: ["ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE", "JS_BLOCK"],\n      toString: general3DastToSTRplaceholder,',
     alreadyDoneMarker: '"ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE", "JS_BLOCK"',
+    alsoDoneMarker: 'placeholder: ["JS_BLOCK"],',
   },
 ]);
 // The plugin-host register-convention patch that used to run here has
@@ -197,6 +223,10 @@ test("a plain scene with no reactive directives is unaffected", () => {
 });
 
 test("a full multi-directive scene actually runs: click updates a direct binding and a computed binding", () => {
+  // The WHOLE transpiled program, run the way a page runs it. JS_BLOCK
+  // statements are emitted once, after OAS_OBJ is built and before the scene
+  // starts, so the renderer entry points the program touches are stubbed
+  // (there is no WebGL here) rather than the output being cut apart.
   const scriptPart = transpile(
     [
       "state count = 0",
@@ -205,7 +235,7 @@ test("a full multi-directive scene actually runs: click updates a direct binding
       "@doubledText bind.text = doubled",
       "@increment click => count += 1",
     ].join("\n\n")
-  ).split("var defaultGredientMap")[0];
+  );
 
   const { JSDOM } = require("jsdom");
   const dom = new JSDOM(
@@ -217,6 +247,10 @@ test("a full multi-directive scene actually runs: click updates a direct binding
   global.MutationObserver = dom.window.MutationObserver;
   delete require.cache[require.resolve("../runtime.js")];
   require("../runtime.js");
+  dom.window.THREE = { DataTexture: function () { return {}; }, RGBFormat: 1 };
+  dom.window.ObjectAnimationSystem_INS = {
+    main: () => ({ init: () => ({}) }),
+  };
   dom.window.eval(scriptPart);
 
   assert.strictEqual(dom.window.document.getElementById("countText").textContent, "0");

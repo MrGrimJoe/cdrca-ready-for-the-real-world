@@ -1,0 +1,9 @@
+!--- SCENE Landing :: A hero section that actually moves ---
+
+@heroCard card.elevated
+@ctaButton button.primary
+
+@heroCard fx slide-up smooth distance=40px duration=600ms
+@ctaButton fx pulse subtle duration=900ms
+
+!---END---

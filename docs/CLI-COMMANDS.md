@@ -161,7 +161,8 @@ cdrca publish
 Scaffolds a full CDRCA app project in a new `<name>/` directory:
 `cdrca.json`, a `.gitignore` (excludes `node_modules/`,
 `.cdrca-state.json`, `.cdrca-build/`), the default CDRCA logo as its icon, a starter
-`.cdrca` scene file, and — critically — actually installs the CDRCA
+`.cdrca` scene file, **a starter web page of its own (`public/index.html`, referenced by
+`cdrca.json`'s `html` field)**, and — critically — actually installs the CDRCA
 language runtime into the project via `npm install cdrca`, patches it so
 the project gets its own stable port, and stages Quark, the built-in
 UI component directive layer (see ARCHITECTURE.md and
@@ -211,6 +212,15 @@ Launches the current project's CDRCA server directly (never via
 npm/npx), using the port baked in at create/install time. Prints
 `CDRCA_PORT=<port>` on stdout so callers like the VS Code extension's run
 button can read it back rather than guessing or hardcoding a port.
+
+Which server starts depends on the project:
+
+- A project whose `cdrca.json` has an **`html`** or **`pages`** field (every project
+  `cdrca create app` makes) owns its page. The **project server** serves that page, adds CDRCA's
+  scripts to it, compiles your `.cdrca` files whenever the browser asks for them (so a refresh
+  always shows your latest files), and serves `public/` as static files. It needs nothing but Node.
+  See [guides/PROJECT-LAYOUT.md](./guides/PROJECT-LAYOUT.md).
+- Any other project keeps the original preview server, exactly as before.
 
 ```
 cdrca run

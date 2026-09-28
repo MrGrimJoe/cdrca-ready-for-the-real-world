@@ -1,0 +1,18 @@
+{
+  "name": "campfire",
+  "version": "0.1.0",
+  "description": "Branching dialogue and narrative for CDRCA — speakers, typewriter lines, and choices.",
+  "type": "plugin",
+  "entry": "plugin.js",
+  "icon": "icon.png",
+  "author": "",
+  "license": "IOSL",
+  "repository": "",
+  "dependencies": {},
+  "permissions": [],
+  "uses": [["syntax", "customRule"]],
+  "libraries": {
+    "core": "campfire-core.js",
+    "ui": "campfire-ui.js"
+  }
+}

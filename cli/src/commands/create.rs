@@ -11,6 +11,7 @@ use crate::project_state::ProjectState;
 use crate::quark_patch::{self, QuarkPatchOutcome};
 
 const STARTER_CDRCA: &str = include_str!("../templates/starter.cdrca");
+const STARTER_HTML: &str = include_str!("../templates/starter.html");
 const STARTER_PLUGIN_JS: &str = include_str!("../templates/starter-plugin.js");
 const STARTER_PLUGIN_LIBRARY_JS: &str = include_str!("../templates/starter-plugin-library.js");
 const DEFAULT_LOGO: &[u8] = include_bytes!("../templates/assets/cdrca-logo.png");
@@ -47,6 +48,21 @@ pub fn run(name: &str) -> Result<()> {
         provides_for: None,
     };
     manifest.save(&root.join("cdrca.json")).context("writing cdrca.json")?;
+
+    // The project's own page. It is a plain, git-tracked file the author
+    // edits; `cdrca run` serves it and adds CDRCA's runtime and the program.
+    // The `html` field lives beside the manifest's registry-facing fields but
+    // is written separately, because it is local to the project (see
+    // project_layout.rs).
+    let html_rel = "public/index.html";
+    std::fs::create_dir_all(root.join("public")).context("creating public directory")?;
+    std::fs::write(root.join(html_rel), render_starter_html(name)).context("writing starter page")?;
+    let manifest_path = root.join("cdrca.json");
+    let with_html = crate::project_layout::add_html_field(
+        &std::fs::read_to_string(&manifest_path).context("re-reading cdrca.json")?,
+        html_rel,
+    )?;
+    std::fs::write(&manifest_path, with_html).context("adding the page to cdrca.json")?;
 
     // .cdrca-state.json holds a locally-bound port — machine/instance
     // specific, shouldn't leak into a repo or a published package tarball.
@@ -141,6 +157,7 @@ pub fn run(name: &str) -> Result<()> {
     println!("  {name}/.gitignore        (excludes node_modules/, .cdrca-state.json, .cdrca-build/)");
     println!("  {name}/icon.png            (default CDRCA logo — replace with your own PNG)");
     println!("  {name}/{entry_rel}");
+    println!("  {name}/{html_rel}   (your page — edit freely)");
     println!("  {name}/.cdrca-state.json   (assigned port: {port})");
     if !matches!(outcome, PatchOutcome::AlreadyPatched | PatchOutcome::Applied) {
         println!("  (see warning above — this project will fall back to CDRCA's default port 3000)");
@@ -154,8 +171,21 @@ pub fn run(name: &str) -> Result<()> {
     if !plugin_pipeline_patch_applied {
         println!("  (see warning(s) above — some plugin directives may produce invalid JS)");
     }
-    println!("\nNext: cd {name} && cdrca build app");
+    println!("\nNext: cd {name} && cdrca run     (then open http://localhost:{port}/)");
+    println!("      cdrca build app          (package it as a desktop app)");
     Ok(())
+}
+
+/// The starter page with the project's name filled in — HTML-escaped, since a
+/// project name is arbitrary text and this lands inside markup.
+fn render_starter_html(name: &str) -> String {
+    let escaped = name
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;");
+    STARTER_HTML.replace("{{name}}", &escaped)
 }
 
 /// `cdrca create plugin <name> [--library <libraryName>]` — plan-doc
@@ -301,6 +331,41 @@ fn whoami_fallback() -> String {
     std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod starter_page_tests {
+    use super::*;
+
+    #[test]
+    fn the_name_is_escaped_into_the_page() {
+        let html = render_starter_html("a<b>&\"c'");
+        assert!(html.contains("<title>a&lt;b&gt;&amp;&quot;c&#39;</title>"));
+        assert!(!html.contains("{{name}}"), "every placeholder is filled");
+        assert!(!html.contains("<b>"), "no raw markup from the name");
+    }
+
+    #[test]
+    fn the_starter_page_holds_together() {
+        let html = render_starter_html("demo");
+        // exactly one runtime marker, outside any comment, and no stray comment terminator
+        assert_eq!(html.matches("<!-- cdrca:runtime -->").count(), 1);
+        let without_comments = {
+            let mut out = String::new();
+            let mut rest = html.as_str();
+            while let Some(i) = rest.find("<!--") {
+                out.push_str(&rest[..i]);
+                let after = &rest[i + 4..];
+                let j = after.find("-->").expect("every comment is closed");
+                rest = &after[j + 3..];
+            }
+            out.push_str(rest);
+            out
+        };
+        assert!(!without_comments.contains("-->"), "a nested comment would leave this behind as visible text");
+        assert!(html.contains("id=\"THRREjsRender\""), "the starter scene needs its canvas");
+        assert!(html.starts_with("<!doctype html>"));
+    }
 }
 
 #[cfg(test)]

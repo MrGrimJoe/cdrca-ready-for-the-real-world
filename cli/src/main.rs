@@ -12,6 +12,8 @@ mod parser_spacing_patch;
 mod patch;
 mod plugin_frontend_patch;
 mod plugin_stage;
+mod project_layout;
+mod project_server;
 mod project_state;
 mod quark_libscan;
 mod quark_patch;

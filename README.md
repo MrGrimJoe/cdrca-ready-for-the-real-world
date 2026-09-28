@@ -17,9 +17,8 @@ scene, bring in objects, and drive them with actions. A CDRCA source file
 
 ```
 !--- SCENE Main :: Bouncing balls demo ---
-use ObjectAnimationSystem_INS.CORE_3d_PROPSsceneSYS.exampleProps.BouncingSphereProp() as ball1
-add new action bounce1 2000 500
-def ACTION bounce1 ball1 modifyMesh ""
+object ball1 = BouncingSphere()
+action bounce1 stay=2000ms lerp=500ms { ball1.modifyMesh("") }
 !---END---
 ```
 

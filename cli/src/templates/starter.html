@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{name}}</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; color: #e8ecf4; background: #0b1020; }
+    main { max-width: 42rem; margin: 0 auto; padding: 3rem 1.5rem; }
+    code { background: #1a2238; padding: .1em .35em; border-radius: 4px; }
+    #THRREjsRender { display: block; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <h1>{{name}}</h1>
+    <p>This page is yours — edit <code>public/index.html</code>.
+       Its animation lives in <code>src/main.cdrca</code>; refresh the browser after you change it.</p>
+    <p>Want the animation <em>behind</em> the page instead? Add a line saying
+       <code>background</code> to the scene in <code>src/main.cdrca</code>.</p>
+    <!-- The scene draws into this canvas. `background` draws behind the page instead. -->
+    <canvas id="THRREjsRender"></canvas>
+  </main>
+  <!-- CDRCA adds its runtime scripts, and your program (src/main.cdrca), at the marker below.
+       Move the marker to change where they load. -->
+  <!-- cdrca:runtime -->
+</body>
+</html>

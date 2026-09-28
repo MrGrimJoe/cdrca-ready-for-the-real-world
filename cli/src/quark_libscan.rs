@@ -62,9 +62,44 @@ fn scan_dir(dir: &Path, found: &mut BTreeSet<LibRef>) -> Result<()> {
     Ok(())
 }
 
+/// `load <plugin>.<library>` — the v2 spelling of `@useLib`. Stricter than
+/// the `@useLib` scan on purpose: `load` is an ordinary English word, so it
+/// only counts when the WHOLE line is `load`, whitespace, one
+/// `<name>.<name>`, and optionally a trailing `//` comment. Anything looser
+/// could mistake a line of JavaScript for a library reference.
+fn load_line_ref(trimmed: &str) -> Option<LibRef> {
+    let rest = trimmed.strip_prefix("load")?;
+    // `loader`, `loaded`, `load.x` etc. are not the keyword.
+    if !rest.starts_with(|c: char| c == ' ' || c == '\t') {
+        return None;
+    }
+    let rest = rest.trim();
+    let rest = match rest.find("//") {
+        Some(i) => rest[..i].trim_end(),
+        None => rest,
+    };
+    let (plugin_name, library_name) = rest.split_once('.')?;
+    let is_name = |s: &str| {
+        let mut chars = s.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    if !is_name(plugin_name) || !is_name(library_name) {
+        return None;
+    }
+    Some(LibRef {
+        plugin_name: plugin_name.to_string(),
+        library_name: library_name.to_string(),
+    })
+}
+
 fn scan_source(contents: &str, found: &mut BTreeSet<LibRef>) {
     for line in contents.lines() {
         let trimmed = line.trim();
+        if let Some(lib) = load_line_ref(trimmed) {
+            found.insert(lib);
+            continue;
+        }
         let Some(rest) = trimmed.strip_prefix("@useLib") else {
             continue;
         };
@@ -94,6 +129,51 @@ fn scan_source(contents: &str, found: &mut BTreeSet<LibRef>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_v2_load_spelling() {
+        let mut found = BTreeSet::new();
+        scan_source("load quark.components\n", &mut found);
+        assert_eq!(found.len(), 1);
+        let lib = found.iter().next().unwrap();
+        assert_eq!(lib.plugin_name, "quark");
+        assert_eq!(lib.library_name, "components");
+    }
+
+    #[test]
+    fn load_and_uselib_can_be_mixed_and_are_deduplicated() {
+        let mut found = BTreeSet::new();
+        scan_source(
+            "@useLib quark.components\nload quark.components\nload quark.templates // extras\n  load mathcore.icons\n",
+            &mut found,
+        );
+        let names: Vec<String> = found
+            .iter()
+            .map(|l| format!("{}.{}", l.plugin_name, l.library_name))
+            .collect();
+        assert_eq!(names, vec!["mathcore.icons", "quark.components", "quark.templates"]);
+    }
+
+    #[test]
+    fn load_is_only_a_directive_when_the_whole_line_is_one() {
+        let mut found = BTreeSet::new();
+        scan_source(
+            "loader.x\nloaded quark.components\nload.quark.components\nload quark\nload\nload quark.\nload .components\n// load quark.components\nconst a = 1; load quark.components\nload quark.components extra words\nload a b.c\n",
+            &mut found,
+        );
+        assert!(found.is_empty(), "false positives: {:?}", found);
+    }
+
+    #[test]
+    fn a_load_line_inside_a_js_block_body_shaped_like_a_directive_is_still_only_a_reference() {
+        // Documented limitation: this is a text scan, not a parse. A line that
+        // is exactly `load a.b` inside a JS block would be picked up; the
+        // worst outcome is one extra <script> tag that fails to resolve with
+        // a warning, never a wrong compile.
+        let mut found = BTreeSet::new();
+        scan_source("JS {\nload a.b\n}\n", &mut found);
+        assert_eq!(found.len(), 1);
+    }
 
     #[test]
     fn finds_a_single_directive() {

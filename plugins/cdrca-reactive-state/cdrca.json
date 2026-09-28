@@ -10,5 +10,9 @@
   "repository": "https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world",
   "dependencies": {},
   "permissions": [],
-  "uses": [["syntax", "customRule"]]
+  "uses": [["syntax", "customRule"]],
+  "libraries": {
+    "store": "reactive-state-store.js",
+    "query": "reactive-state-query.js"
+  }
 }

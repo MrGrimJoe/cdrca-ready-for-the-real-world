@@ -135,8 +135,52 @@ const BUNDLED_FILES: &[(&str, &str)] = &[
         include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/plugins.json"),
     ),
     (
+        // The v2 statement grammar. Registered FIRST in plugins.json: it
+        // rewrites a file's v2 statements into legacy ones before any other
+        // plugin or the parser sees it, and leaves everything else untouched.
+        "Back-end/Transpiler/Plugins/grammar/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/grammar/plugin.js"),
+    ),
+    (
+        // Registered in plugins.json, so it MUST be written. It used to be
+        // missing from this list: a CLI-scaffolded project then had
+        // `animations` in plugins.json but no file behind it, and every
+        // animations-owned statement (`background`, ...) failed with
+        // "Unexpected token" — with no warning from the plugin loader.
+        "Back-end/Transpiler/Plugins/animations/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/animations/plugin.js"),
+    ),
+    (
+        // Same bug, same fix, found the same way: registered in
+        // plugins.json but ABSENT from this bundle, so a CLI-scaffolded
+        // project had `cdrca-reactive-state` in plugins.json with no file
+        // behind it and every `state`/`computed`/`watch`/`bind`/event
+        // statement — the entire reactive-state language, not an edge case
+        // — failed with "Unexpected token", again with no warning from the
+        // plugin loader. Caught by docs/SYNTAX.md's own compile-checked
+        // examples, not by a targeted test: every existing reactive-state
+        // test staged this plugin manually into a throwaway copy instead of
+        // using the real default bundle, which is exactly how this stayed
+        // invisible.
+        "Back-end/Transpiler/Plugins/cdrca-reactive-state/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/plugin.js"),
+    ),
+    (
         "Back-end/Transpiler/Plugins/quark/plugin.js",
         include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/quark/plugin.js"),
+    ),
+    (
+        // Registered in plugins.json but never added here -- caught by
+        // every_registered_plugin_is_bundled() below, which panics on the
+        // first missing entry it finds in plugins.json's array order
+        // (ember happened to come before campfire there); both were
+        // actually missing, not just the one the panic message named.
+        "Back-end/Transpiler/Plugins/ember/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/plugin.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/campfire/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/campfire/plugin.js"),
     ),
     (
         "Front-end/index.html",
@@ -179,8 +223,27 @@ const BUNDLED_FILES: &[(&str, &str)] = &[
         ),
     ),
     (
+        // Pre-existing gap, found while adding animations-backdrop.js
+        // below: index.html's own <script> tag for this file has always
+        // pointed here, but this file's own BUNDLED_FILES list never
+        // actually included it — a project relying on this fallback
+        // bundled runtime (see installed_copy_has_plugin_system() above)
+        // would 404 on it. Unrelated to the animations/backdrop work,
+        // just adjacent and cheap to fix while already in this list.
+        "Front-end/Transpiler-Plugins/quark/quark-families.js",
+        include_str!(
+            "templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-families.js"
+        ),
+    ),
+    (
         "Front-end/Transpiler-Plugins/quark/quark-ui.js",
         include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-ui.js"),
+    ),
+    (
+        "Front-end/Transpiler-Plugins/animations/animations-backdrop.js",
+        include_str!(
+            "templates/cdrca-runtime/Front-end/Transpiler-Plugins/animations/animations-backdrop.js"
+        ),
     ),
 ];
 
@@ -260,6 +323,95 @@ mod tests {
             full_transpiler.contains("JS_BLOCK: []"),
             "must have the fix for JS_BLOCK statements being silently dropped"
         );
+    }
+
+    fn bundled(rel: &str) -> Option<&'static str> {
+        BUNDLED_FILES.iter().find(|(p, _)| *p == rel).map(|(_, c)| *c)
+    }
+
+    /// Every plugin `plugins.json` registers has to be an actual file in the
+    /// bundle — the loader doesn't complain about a registered-but-missing
+    /// plugin, it just never runs it.
+    #[test]
+    fn every_registered_plugin_is_bundled() {
+        let json = bundled("Back-end/Transpiler/Plugins/plugins.json").unwrap();
+        let list: serde_json::Value = serde_json::from_str(json).unwrap();
+        let mut checked = 0;
+        for entry in list.as_array().unwrap() {
+            let path = entry["path"].as_str().unwrap();
+            let rel = format!("Back-end/Transpiler/Plugins/{path}");
+            assert!(
+                bundled(&rel).is_some(),
+                "plugins.json registers {path:?} but {rel} is not in BUNDLED_FILES"
+            );
+            checked += 1;
+        }
+        assert!(checked >= 2, "expected at least animations + quark, saw {checked}");
+    }
+
+    /// Every local <script src> in the bundled page has to exist in the
+    /// bundle, matched CASE-SENSITIVELY — a lowercase tag for a capitalised
+    /// file works on Windows and 404s everywhere else.
+    #[test]
+    fn every_page_script_tag_is_bundled() {
+        let html = bundled("Front-end/index.html").unwrap();
+        let mut checked = 0;
+        for line in html.lines() {
+            let line = line.trim();
+            if line.starts_with("<!--") || !line.contains("<script") {
+                continue;
+            }
+            let Some(after) = line.split("src=\"").nth(1) else { continue };
+            let Some(src) = after.split('"').next() else { continue };
+            if src.starts_with("http") {
+                continue;
+            }
+            let rel = format!("Front-end/{}", src.trim_start_matches("./"));
+            assert!(
+                bundled(&rel).is_some(),
+                "index.html loads {src:?} but {rel} is not in BUNDLED_FILES (exact case)"
+            );
+            checked += 1;
+        }
+        assert!(checked >= 5, "expected several script tags, saw {checked}");
+    }
+
+    /// Every relative require("./x") between bundled back-end files has to
+    /// resolve inside the bundle.
+    #[test]
+    fn every_relative_require_in_the_backend_is_bundled() {
+        let mut checked = 0;
+        for (rel, contents) in BUNDLED_FILES {
+            if !rel.starts_with("Back-end/") || !rel.ends_with(".js") {
+                continue;
+            }
+            let dir = std::path::Path::new(rel).parent().unwrap();
+            for chunk in contents.split("require(\"").skip(1) {
+                let Some(spec) = chunk.split('"').next() else { continue };
+                if !spec.starts_with("./") && !spec.starts_with("../") {
+                    continue;
+                }
+                let joined = dir.join(spec);
+                let mut parts: Vec<String> = Vec::new();
+                for c in joined.components() {
+                    match c {
+                        std::path::Component::ParentDir => {
+                            parts.pop();
+                        }
+                        std::path::Component::Normal(p) => parts.push(p.to_string_lossy().into()),
+                        _ => {}
+                    }
+                }
+                let base = parts.join("/");
+                let candidates = [base.clone(), format!("{base}.js"), format!("{base}/index.js")];
+                assert!(
+                    candidates.iter().any(|c| bundled(c).is_some()),
+                    "{rel} requires {spec:?} but none of {candidates:?} is in BUNDLED_FILES"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 5, "expected several relative requires, saw {checked}");
     }
 
     #[test]

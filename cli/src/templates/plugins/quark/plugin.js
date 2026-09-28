@@ -139,8 +139,17 @@ function parseElementDirective(tokens, p) {
     if (p >= tokens.length || !isIdentifierLike(tokens[p])) {
       throw new Error("Quark: expected a modifier name after '.'");
     }
-    modifiers.push(tokens[p].value);
+    let modifier = tokens[p].value;
     p++;
+    // Modifier names can be hyphenated (`full-width`) and the tokenizer splits
+    // on '-', so re-join `word - word`. This was documented
+    // (QUARK-SYNTAX.md: `@emailInput input.bordered.full-width`) but threw
+    // "Unexpected token" — the parser stopped at the '-'.
+    while (p + 1 < tokens.length && tokens[p].value === "-" && isIdentifierLike(tokens[p + 1])) {
+      modifier += "-" + tokens[p + 1].value;
+      p += 2;
+    }
+    modifiers.push(modifier);
   }
 
   // optional = <value>

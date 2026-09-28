@@ -1,5 +1,16 @@
 [
     {
+        "name": "grammar",
+        "path": "grammar/plugin.js",
+        "uses": [
+            [
+                "before",
+                "parse"
+            ]
+        ],
+        "permissions": []
+    },
+    {
         "name": "animations",
         "path": "animations/plugin.js",
         "uses": [
@@ -13,6 +24,39 @@
     {
         "name": "quark",
         "path": "quark/plugin.js",
+        "uses": [
+            [
+                "syntax",
+                "customRule"
+            ]
+        ],
+        "permissions": []
+    },
+    {
+        "name": "cdrca-reactive-state",
+        "path": "cdrca-reactive-state/plugin.js",
+        "uses": [
+            [
+                "syntax",
+                "customRule"
+            ]
+        ],
+        "permissions": []
+    },
+    {
+        "name": "ember",
+        "path": "ember/plugin.js",
+        "uses": [
+            [
+                "syntax",
+                "customRule"
+            ]
+        ],
+        "permissions": []
+    },
+    {
+        "name": "campfire",
+        "path": "campfire/plugin.js",
         "uses": [
             [
                 "syntax",

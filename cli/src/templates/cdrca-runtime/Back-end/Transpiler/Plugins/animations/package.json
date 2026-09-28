@@ -1,0 +1,11 @@
+{
+  "name": "animations-plugin-devtools",
+  "private": true,
+  "description": "Dev/test tooling for the animations plugin. plugin.js (the shipped plugin) has zero dependencies — this is test-only.",
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "devDependencies": {
+    "cdrca": "^01.00.06"
+  }
+}

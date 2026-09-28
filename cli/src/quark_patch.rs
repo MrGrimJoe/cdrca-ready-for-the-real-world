@@ -388,6 +388,55 @@ mod frontend_tests {
         assert!(!unreferenced.is_file(), "unreferenced library must not be written");
     }
 
+    /// Every Quark file exists in TWO places: `templates/plugins/quark/`
+    /// (what `patch_quark_frontend` stages into a project — the copy a user
+    /// actually runs) and the bundled `cdrca-runtime` (what the CLI installs
+    /// when the published package lacks the plugin system). They have to stay
+    /// byte-identical; a fix applied to only one silently doesn't reach either
+    /// half of the users. This has bitten this repo before (see the test
+    /// below) and bit again while adding hyphenated modifiers.
+    #[test]
+    fn the_two_copies_of_every_quark_file_are_byte_identical() {
+        let pairs: [(&str, &str, &str); 6] = [
+            (
+                "plugin.js",
+                include_str!("templates/plugins/quark/plugin.js"),
+                include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/quark/plugin.js"),
+            ),
+            (
+                "quark-ui.js",
+                include_str!("templates/plugins/quark/quark-ui.js"),
+                include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-ui.js"),
+            ),
+            (
+                "quark-core.js",
+                include_str!("templates/plugins/quark/quark-core.js"),
+                include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-core.js"),
+            ),
+            (
+                "quark-components.js",
+                include_str!("templates/plugins/quark/quark-components.js"),
+                include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-components.js"),
+            ),
+            (
+                "quark-templates.js",
+                include_str!("templates/plugins/quark/quark-templates.js"),
+                include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-templates.js"),
+            ),
+            (
+                "quark-families.js",
+                include_str!("templates/plugins/quark/quark-families.js"),
+                include_str!("templates/cdrca-runtime/Front-end/Transpiler-Plugins/quark/quark-families.js"),
+            ),
+        ];
+        for (name, staged, bundled) in pairs {
+            assert!(
+                staged == bundled,
+                "{name}: templates/plugins/quark/{name} and the bundled cdrca-runtime copy have drifted apart — apply every change to BOTH"
+            );
+        }
+    }
+
     #[test]
     fn families_library_stages_correctly_alongside_another_library() {
         // Regression coverage for the real drift bug found while adding

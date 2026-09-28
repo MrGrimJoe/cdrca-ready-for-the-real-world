@@ -69,6 +69,30 @@ function getVFScontentUnitpath(vfs, path) {
   return current;
 }
 
+// The normalised, root-relative path (`src/main.cdrca`) that getVFScontent()
+// would read for `path` — or undefined if none of the candidates exist. Same
+// rules as getVFScontentUnitpath(): `.`, `~` and empty parts are dropped and
+// `..` pops one level (and does nothing at the root).
+function resolveVFSPath(vfs, path) {
+  const candidates = Array.isArray(path) ? path : [path];
+  for (const candidate of candidates) {
+    const stack = [];
+    for (const part of String(candidate).trim().split("/")) {
+      if (part === "" || part === "." || part === "~") continue;
+      if (part === "..") {
+        if (stack.length > 0) stack.pop();
+      } else stack.push(part);
+    }
+    try {
+      getVFScontentUnitpath(vfs, String(candidate));
+      return stack.join("/");
+    } catch (error) {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 function getVFScontent(vfs, path) {
   if (!Array.isArray(path)) {
     return getVFScontentUnitpath(vfs, String(path));
@@ -263,6 +287,12 @@ function mainMultiFile(
 
   // console.log(hookedVFS);
   let mainFile = getVFScontent(hookedVFS, mainPath);
+  // Which file this is (root-relative), so a plugin's `before parse` hook can
+  // resolve things relative to it — the grammar plugin's `import "sibling.cdrca"`.
+  // Set AFTER the `...options` spread below on purpose: when this file imports
+  // another, `options` still carries the IMPORTER's path, and the imported
+  // file must see its own.
+  const currentFile = resolveVFSPath(hookedVFS, mainPath);
   let transpiled = uniFN(mainFile, {
     VFS: {
       ...hookedVFS,
@@ -274,6 +304,7 @@ function mainMultiFile(
       mainMultiFile,
     },
     ...(options || {}),
+    currentFile,
   });
 
   let finalTranspiled = pluginAPI.run(

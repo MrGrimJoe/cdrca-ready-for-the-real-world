@@ -13,7 +13,7 @@ HTML element with one line, instead of hand-coding it:
 
 ```
 @mainNav navbar.glass
-@sidePanel sidebar.closable.edgy = #2563eb
+@sidePanel sidebar closable edgy accent=#2563eb
 @profileCard card.elevated
 ```
 
@@ -167,7 +167,7 @@ at all. What's new is entirely in how the runtime (`quark-core.js`)
 - `= <value>` — optional. Sets the component instance's accent color (CSS
   custom property `--quark-accent`).
 
-## Declaring which library bundles you use: `@useLib`
+## Declaring which library bundles you use: `load`
 
 Quark ships more than just its `@id component.variant` engine — the
 component library itself (`quark-components.js`), the structural
@@ -176,9 +176,9 @@ token sets (`quark-families.js`, see below) are separate, optional
 bundles. A `.cdrca` file declares which ones it actually needs with:
 
 ```
-@useLib quark.components
-@useLib quark.templates
-@useLib quark.families
+load quark.components
+load quark.templates
+load quark.families
 ```
 
 Only bundles you actually reference get loaded into the page — a file
@@ -224,7 +224,7 @@ it rides the exact same per-element CSS-scoping mechanism every
 component's own variant/modifier CSS already uses:
 
 ```
-@myButton button.primary = family:soft
+@myButton button primary family=soft
 ```
 
 A plain color value still works exactly as before and is unaffected —

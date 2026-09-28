@@ -4,9 +4,19 @@ Quark is the built-in `@directive` UI component layer: one line applies a
 whole prebuilt, styled component to a real HTML element, instead of you
 hand-coding the CSS and behavior yourself.
 
+> **New spelling.** Every directive on this page can also be written without dots:
+> `@nav navbar glass sticky` instead of `@nav navbar.glass.sticky`, and
+> `@b button primary accent=#10b981` instead of `@b button.primary = #10b981`.
+> Both work when there's no value after the dots — a bare `@id component.variant`
+> mount is unchanged either way. Once a **value** follows (`= <value>`), only the
+> space-separated form works now; the dotted-plus-`=` shape is legacy and is a
+> compile error if hand-written — see [SYNTAX.md](../SYNTAX.md).
+> (Hyphenated modifiers such as `input.bordered.full-width`, documented below,
+> used to fail to parse in the dotted form; that is fixed.)
+
 ```
 @mainNav navbar.glass
-@sidePanel sidebar.closable.edgy = #2563eb
+@sidePanel sidebar closable edgy accent=#2563eb
 @profileCard card.elevated
 ```
 
@@ -36,8 +46,8 @@ of that to use Quark day to day.
 ```
 
 ```
-@profileCard card.elevated.bordered = #10b981
- └────┬────┘  └─┬─┘  └──┬──┘  └─┬──┘   └───┬──┘
+@profileCard card elevated bordered accent=#10b981
+ └────┬────┘  └┬─┘ └──┬──┘  └──┬──┘   └───┬──┘
    elementId component variant modifier   value
 ```
 
@@ -61,7 +71,7 @@ of that to use Quark day to day.
   a whole design family scoped to just this element — see
   [Design families](#design-families) below.
 
-## Which library bundles you need: `@useLib`
+## Which library bundles you need: `load`
 
 Quark's component library, template helpers, and design families are
 separate, optional bundles — only what you actually reference gets loaded
@@ -69,21 +79,21 @@ onto the page. Declare what you use, once per file, anywhere before you
 use it:
 
 ```
-@useLib quark.components
-@useLib quark.templates
-@useLib quark.families
+load quark.components
+load quark.templates
+load quark.families
 ```
 
 | If your file uses... | Add |
 |---|---|
-| Any `@id component.variant` directive | `@useLib quark.components` |
-| `Quark.templates.scaffold(...)` | `@useLib quark.templates` |
-| `Quark.families.setRoot(...)` or `= family:<name>` | `@useLib quark.families` |
+| Any `@id component.variant` directive | `load quark.components` |
+| `Quark.templates.scaffold(...)` | `load quark.templates` |
+| `Quark.families.setRoot(...)` or `= family:<name>` | `load quark.families` |
 
 Most files that use components at all just need the first line. You don't
 need to declare the engine itself (`quark-core.js`) or the compatibility
 shim (`quark-ui.js`) — those load unconditionally. After adding a new
-`@useLib` line, re-run `cdrca install cdrca` (or `cdrca create app` picks
+`load` line, re-run `cdrca install cdrca` (or `cdrca create app` picks
 it up automatically on a fresh project) so the CLI re-scans your source
 and updates which `<script>` tags get written into the page.
 
@@ -108,7 +118,7 @@ Quark.families.setRoot("structured");
 page keeps whatever it already had:
 
 ```
-@myButton button.primary = family:soft
+@myButton button primary family=soft
 ```
 
 This is how you get a hybrid look — "a soft button in an otherwise
@@ -127,7 +137,7 @@ their own ids:
 
 ```
 @mainNav navbar.glass.sticky
-@sidePanel sidebar.closable.edgy = family:structured
+@sidePanel sidebar closable edgy family=structured
 @profileCard card.elevated
 @editButton button.outlined
 @confirmModal modal.glass
@@ -311,13 +321,13 @@ freely in one file:
 ```
 !--- SCENE Main :: Mixed animations + Quark test ---
 
-use ObjectAnimationSystem_INS.CORE_3d_PROPSsceneSYS.exampleProps.BouncingSphereProp() as ball1
+object ball1 = BouncingSphere()
 
-add new action bounce1 2000 500
+action bounce1 stay=2000ms lerp=500ms {
+  ball1.modifyMesh("")
+}
 
-def ACTION bounce1 ball1 modifyMesh ""
-
-@mySidebar sidebar.closable.edgy = open
+@mySidebar sidebar closable edgy accent=open
 
 !---END---
 ```
@@ -331,5 +341,5 @@ action side of a file like this.
   system, how a directive becomes real code: [QUARK.md](../QUARK.md).
 - **Adding your own component library**, or extending Quark from outside
   this repo: [PLUGIN-DEVELOPMENT.md](./PLUGIN-DEVELOPMENT.md).
-- **The `@useLib` mechanism in full depth**, including why it has to
+- **The `load` mechanism in full depth**, including why it has to
   resolve statically: [PLUGIN-LIBRARIES.md](../PLUGIN-LIBRARIES.md).

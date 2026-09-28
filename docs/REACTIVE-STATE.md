@@ -409,22 +409,128 @@ JS {
 @userList bind.list = users using userTemplate
 ```
 
-## Storage integration (extension point)
+This still works exactly as shown, and is still the right choice for a
+one-off fetch you're not going to reuse. For anything you'll call more
+than once, need cached, or want to re-run automatically when something
+else changes — see **Query**, right below, which is this same pattern
+with the bookkeeping done for you.
 
-`CDRCA.reactive.subscribeAll(fn)` calls `fn({ name, value, oldValue })` on
-**every** state/computed change, page-wide — the hook a future storage
-plugin needs to persist state without this plugin knowing anything about
-storage:
+## Store
+
+`@useLib cdrca-reactive-state.store` adds one call,
+`R.store(name, initial, { persist, ttl })`, that behaves exactly like
+`define()` except it can also survive a page reload:
 
 ```js
-CDRCA.reactive.subscribeAll(({ name, value }) => {
-  localStorage.setItem(`cdrca:${name}`, JSON.stringify(value));
+R.store("cart", [], { persist: "local" });          // survives closing the tab
+R.store("draftText", "", { persist: "session" });   // survives a refresh, not a new tab
+R.store("authToken", null, { persist: "local", ttl: 3600000 }); // expires after 1 hour
+```
+
+Every `set()`/`update()` on a stored name writes through automatically —
+there's nothing else to call. This is built entirely on `subscribeAll()`
+(see below), not a separate mechanism, so it composes with everything
+else in this plugin for free: a stored value is a completely normal
+reactive cell, bindable, watchable, computed-from, exactly like one made
+with plain `define()`.
+
+**A value with no `persist` option** behaves exactly like `define()` — so
+you can reach for `R.store()` as your default and only add `persist`
+once you actually decide something needs to survive a reload, without
+changing anything else about how you use it.
+
+A corrupted or expired persisted entry falls back to your `initial`
+value rather than throwing on page load — a bad localStorage entry
+should never be why your page fails to render.
+
+## Query
+
+`@useLib cdrca-reactive-state.query` adds `R.query`, `R.refetch`, and
+`R.registerSource` — a reactive wrapper around exactly the `loading`/
+`data`/`error` pattern from **Async state** above, plus caching and
+automatic re-fetching:
+
+```js
+R.query("users", () => fetch("/api/users").then(r => r.json()));
+```
+
+```
+@spinner bind.show = users.loading
+@errorBox bind.show = users.error
+@userList bind.list = users.data using userTemplate
+```
+
+**One cell, not three.** `R.query()` creates a single reactive value —
+`{ data, loading, error }` — not three separately-named ones. This is
+deliberate, not a style choice: `users.loading` in a `.cdrca` expression
+compiles to plain JS property access on whatever `users` resolves to,
+the same way any `.foo` access would. A separately-registered cell
+literally named `"users.loading"` would need `R.val("users.loading")`
+to reach it, which isn't what a bare `users.loading` expression ever
+compiles to. One object-valued cell is what makes `users.loading` read
+naturally in a directive.
+
+**Re-fetching when something else changes**, without wiring a `watch()`
+yourself:
+
+```js
+R.query("filteredUsers", () => fetchFiltered(R.get("searchText")), {
+  dependsOn: ["searchText"],
 });
 ```
 
-Combined with `CDRCA.reactive.define`/`.set` for restoring a value at
-startup, this is enough to build persistent settings, offline caches, etc.
-as a separate plugin later, without touching this one.
+**Caching**, so a manual `R.refetch(name)` doesn't hit the network if the
+last fetch is still fresh:
+
+```js
+R.query("users", () => fetch("/api/users").then(r => r.json()), { cacheTime: 60000 });
+R.refetch("users");              // skipped if fetched within the last 60s
+R.refetch("users", { force: true }); // always re-fetches
+```
+
+**The button example** — no new binding syntax needed, this plugin
+already had what it takes:
+
+```
+@saveButton button.primary
+@saveButton on:click = R.refetch("users")
+```
+
+(`button.primary` is Quark styling the element; `on:click` is this
+plugin's own existing event directive. Nothing about `R.query`/
+`R.refetch` required any new `.cdrca` syntax.)
+
+**Swapping in Firebase, or your own live server, later:** `R.query()`
+doesn't know anything about REST specifically — `R.registerSource(name,
+{ get(config) })` is the whole adapter interface, and a plain `fetch`
+adapter is the only one built in:
+
+```js
+R.query("users", { source: "fetch", url: "/api/users" }); // the built-in shorthand
+```
+
+A Firebase (or Supabase, or a hand-rolled WebSocket server) adapter is
+a plain object with the same `get(config)` shape, published as an
+ordinary third-party library against this same registry — see
+`PLUGIN-DEVELOPMENT.md` in this repo for the `providesFor` mechanism —
+not something baked into this plugin or requiring any SDK as a
+dependency here:
+
+```js
+// a hypothetical reactive-state-firebase library, once installed:
+R.registerSource("firebase", {
+  get(config) { return firebaseGet(config.path); },
+});
+R.query("users", { source: "firebase", path: "/users" });
+```
+
+## Storage integration (extension point)
+
+`CDRCA.reactive.subscribeAll(fn)` calls `fn({ name, value, oldValue })` on
+**every** state/computed change, page-wide — the hook `R.store()` above
+is actually built on, added with zero changes to `runtime.js` itself.
+Anyone building their own persistence/sync layer for reactive state has
+the same hook available, not just this plugin's own `store.js`.
 
 ## Errors
 

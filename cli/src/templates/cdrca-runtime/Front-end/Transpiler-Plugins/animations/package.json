@@ -1,0 +1,6 @@
+{
+  "name": "animations-backdrop-devtools",
+  "private": true,
+  "description": "Dev/test tooling for animations-backdrop.js. The shipped file itself has zero dependencies — this is test-only.",
+  "scripts": { "test": "node tests/run.js" }
+}

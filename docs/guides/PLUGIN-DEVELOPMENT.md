@@ -175,7 +175,7 @@ explicit TODO rather than a silent guess.
 A user pulls this in with:
 
 ```
-@useLib mathcore.curves
+load mathcore.curves
 ```
 
 Unlike Quark, CDRCA's manifest schema has no "always load this core
@@ -210,7 +210,7 @@ since both ship inside the CLI rather than as a registry package. Publish
 it the normal way (`cdrca publish`), and from then on, anyone's
 
 ```
-@useLib quark.icons
+load quark.icons
 ```
 
 resolves to *your* package, without Quark's own author needing to
@@ -252,6 +252,10 @@ Publish it, and `@useLib animations.easing` works for anyone, immediately
       match what you intend users to type after `@useLib`
 - [ ] `cdrca.json`'s `version` follows semver, and you've actually
       bumped it if this is an update to something already published
+- [ ] If your plugin adds new `.cdrca` syntax, it follows
+      [SYNTAX-STYLE-GUIDE.md](./SYNTAX-STYLE-GUIDE.md) — `@id` for
+      targeting an element, bare verb-first otherwise, `with {}` only
+      for genuinely structured params
 
 ## Where to go next
 

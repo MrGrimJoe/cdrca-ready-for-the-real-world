@@ -3,7 +3,7 @@
 const { execFileSync } = require("child_process");
 const path = require("path");
 
-const files = ["plugin.test.js", "runtime.test.js", "integration.test.js"];
+const files = ["plugin.test.js", "runtime.test.js", "store.test.js", "query.test.js", "integration.test.js"];
 let anyFailed = false;
 
 for (const file of files) {

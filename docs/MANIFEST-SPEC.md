@@ -69,6 +69,20 @@ publish — see [PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md).
 | `libraries` | object (string → string) | no, defaults to `{}` | **Only meaningful for `type: "plugin"`.** Bundles the plugin ships itself, mapped `<libraryName> -> <path relative to this manifest>`, e.g. `{ "icons": "dist/my-plugin-icons.js" }`. A `.cdrca` file's `@useLib <thisPlugin>.<libraryName>` resolves against this map first — see [PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md). Ignored (with a warning) on any other `type`. |
 | `providesFor` | object `{ "plugin": string, "library": string }` | **required when `type` is `"library"`**, otherwise absent | Which plugin + library-bundle-name slot this package fills — the counterpart to a `.cdrca` file's `@useLib <plugin>.<library>`. `plugin` may name a real published `type: "plugin"` package, or one of this CLI's own built-ins (`"quark"` or `"animations"` — see `manifest::BUILTIN_PLUGIN_NAMES`). See [PLUGIN-LIBRARIES.md](./PLUGIN-LIBRARIES.md). Ignored (with a warning) on any other `type`. |
 
+### Page layout fields (local to your project)
+
+Two more optional fields describe a project's own web page. They are read by `cdrca run`, they are
+**not part of the registry contract**, and `cdrca publish` never sends them. A `cdrca.json` that
+has them loads exactly like one that doesn't.
+
+| Field | Type | Notes |
+|---|---|---|
+| `html` | string | Path (relative to the manifest, inside the project) to the project's page, e.g. `"public/index.html"`. It is served at `/`, and its program is `entry`. `cdrca create app` writes this for you. |
+| `pages` | object (URL → `{ "html": string, "entry"?: string }`) | Several pages, each at its own URL with its own optional program. Overrides `html`. |
+
+A project with neither field keeps the original preview server. See
+[guides/PROJECT-LAYOUT.md](./guides/PROJECT-LAYOUT.md) for what `cdrca run` does with them.
+
 ## Package types
 
 - **`"package"`** — a reusable `.cdrca` source library other projects depend on (like `calculastic` in the example above). No special permissions model applies. `cdrca install <package>` stages its source into `cdrca_packages/<name>/` in the consuming project (`package_stage.rs`) — **note:** whether CDRCA's actual `add import` mechanism can find it there from a real transpile isn't yet confirmed end-to-end; see that module's doc comment and [REACTIVE-STATE.md](./REACTIVE-STATE.md) for the same "verified vs. not yet confirmed" distinction applied elsewhere in this repo.
@@ -83,6 +97,7 @@ Run automatically before `cdrca publish`, and partially before `cdrca run` / `cd
 - `name` must be non-empty.
 - `version` must parse as valid semver.
 - `entry` must be non-empty **and** the file it points to must actually exist relative to the project root.
+- If `html` or `pages` is present, `cdrca run` checks that every page file (and every page `entry`, which must be a `.cdrca` file) exists, and that every path stays inside the project.
 - If `type` is `"plugin"` and `permissions` is non-empty but `uses` is empty, the CLI prints a warning: the plugin will be seized by CDRCA's runtime on its very first hook-registration attempt, since it declared no allowed hooks.
 - If `type` is `"library"`, `providesFor` must be present with non-empty `plugin` and `library` strings. Whether `providesFor.plugin` names a REAL published plugin (vs. a typo) can only be confirmed against the registry — this manifest-level check is deliberately offline/fast-fail only (see `Manifest::validate()`'s own doc comment); the registry website's publish-time validation is what actually confirms it.
 - If `libraries` is non-empty but `type` isn't `"plugin"`, or `providesFor` is present but `type` isn't `"library"`, the CLI warns (not an error) that the field will be ignored.

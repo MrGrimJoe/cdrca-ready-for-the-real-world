@@ -193,7 +193,12 @@ currentANIM = ObjectAnimationSystem_INS.main(OAS_OBJ).init(60, true);
   ];
   let defaultTemplateRenderer_OBJs = [
     {
-      placeholder: ["ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE", "JS_BLOCK"],
+      placeholder: ["ACTION_DEF", "PROP_DEF", "PROP_USE", "ACTION_USE"],
+      // NOTE: "JS_BLOCK" is deliberately NOT in this group. It used to be, which
+      // emitted every JS_BLOCK statement a SECOND time here — before OAS_OBJ
+      // exists, so a block touching OAS_OBJ threw, and any block with a side
+      // effect ran twice. JS_BLOCK statements are emitted once, by the
+      // dedicated slot below, after OAS_OBJ is built.
       toString: general3DastToSTRplaceholder,
     },
 
@@ -458,7 +463,7 @@ currentANIM = ObjectAnimationSystem_INS.main(OAS_OBJ).init(60, true);`,
           inputs.scenes.push({});
           for (let k = 0; k < scenesSpecificInputs.length; k++) {
             inputs.scenes[inputs.scenes.length - 1][scenesSpecificInputs[k]] =
-              JSON.parse(JSON.stringify(inputs[scenesSpecificInputs[k]]));
+              cycleSafeClone(inputs[scenesSpecificInputs[k]]);
             inputs[scenesSpecificInputs[k]] = [];
           }
         }
@@ -526,3 +531,27 @@ currentANIM = ObjectAnimationSystem_INS.main(OAS_OBJ).init(60, true);`,
   return { transpile };
 }
 module.exports = { create };
+
+// cdrca-import-cycle-patch: deep clone that tolerates circular references.
+//
+// The per-scene snapshot above used JSON.parse(JSON.stringify(...)), which
+// threw "Converting circular structure to JSON" whenever an @IMPORT/@AddImport
+// ed file's statements were in the bucket: an import leaves embedding trace
+// metadata (metaData.formationHistory.embeeded.raw) that points back at an
+// object further up the same tree. Only the reference that would close a
+// cycle is dropped; for any acyclic input (every file that doesn't use
+// @IMPORT) the result is identical to what JSON.parse(JSON.stringify(v))
+// returned before.
+function cycleSafeClone(value) {
+  const ancestors = [];
+  const json = JSON.stringify(value, function (key, val) {
+    if (typeof val !== "object" || val === null) return val;
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) {
+      ancestors.pop();
+    }
+    if (ancestors.includes(val)) return undefined;
+    ancestors.push(val);
+    return val;
+  });
+  return json === undefined ? undefined : JSON.parse(json);
+}
