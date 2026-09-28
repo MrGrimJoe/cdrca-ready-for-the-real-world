@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify-all (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      # Everything tools/verify-all.sh lists under "Prerequisites".
+      - name: Install JS dependencies
+        run: |
+          RT=cli/src/templates/cdrca-runtime
+          npm install --no-audit --no-fund --no-save jsdom@24
+          for d in "$RT" "$RT/Back-end/Transpiler/Plugins/grammar" plugins/cdrca-reactive-state plugins/ember plugins/campfire; do
+            (cd "$d" && npm install --no-audit --no-fund)
+          done
+          (cd "$RT" && npm install --no-audit --no-fund --no-save jsdom@24)
+          (cd plugins/cdrca-reactive-state && npm install --no-audit --no-fund --no-save jsdom@24)
+
+      # Runs every check in the repo (cargo test, the grammar/plugin/runtime
+      # suites, ember and campfire, the docs and corpus checks) and fails the
+      # job if any step fails. All steps run, so one run shows every failure.
+      - name: Verify
+        run: bash tools/verify-all.sh

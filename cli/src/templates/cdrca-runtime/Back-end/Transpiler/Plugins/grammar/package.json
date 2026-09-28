@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "The CDRCA v2 statement grammar, as a built-in plugin.",
-  "scripts": { "test": "node tests/run.js" },
-  "devDependencies": { "jsdom": "^24.0.0" }
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0",
+    "jsdom": "^24.0.0"
+  }
 }

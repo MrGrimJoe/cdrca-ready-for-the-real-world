@@ -339,4 +339,60 @@ test("end to end: js { } compiles like JS { }", () => {
   assert.strictEqual(compile(scene(`${cube}js { window.x = 1; }`)), compile(scene(`${cube}JS { window.x = 1; }`)));
 });
 
+// ---------------------------------------------------------------- registry
+// The registry is the contract the plugin packager classifies against, so
+// its shape and ordering are pinned here.
+
+test("registry: the base grammar registers exactly today's rules, in today's order", () => {
+  assert.deepStrictEqual(G.createBaseRegistry().describe(), {
+    element: [{ name: "elementRule", owner: "base" }],
+    statement: [
+      { name: "directive", owner: "base" },
+      { name: "animationsDeclaration", owner: "base" },
+      { name: "settingStatement", owner: "base" },
+      { name: "campfireStatement", owner: "base" },
+    ],
+    guard: [{ name: "rejectLegacySyntax", owner: "base" }],
+    declarations: [],
+  });
+});
+
+test("registry: an added statement rule runs after every base rule and is tagged with its owner", () => {
+  const reg = G.createBaseRegistry();
+  reg.register("statement", "shout", (ctx, unit, text) => (/^shout\s/.test(text) ? "state shouted = 1" : null), "my-plugin");
+  assert.deepStrictEqual(reg.describe().statement.slice(-1), [{ name: "shout", owner: "my-plugin" }]);
+  assert.strictEqual(desugar("shout hello\n", undefined, false, reg), "state shouted = 1\n");
+});
+
+test("registry: a base rule still wins over an added rule that claims the same text", () => {
+  const reg = G.createBaseRegistry();
+  reg.register("statement", "greedy", () => "// greedy", "my-plugin");
+  assert.strictEqual(desugar("require quark\n", undefined, false, reg), "@requires quark\n");
+});
+
+test("registry: without an added rule, the same text is unclaimed and left alone (default registry unaffected)", () => {
+  const reg = G.createBaseRegistry();
+  reg.register("statement", "shout", () => "state shouted = 1", "my-plugin");
+  assert.strictEqual(desugar("shout hello\n"), "shout hello\n");
+});
+
+test("registry: registering the same name twice in one list is an error", () => {
+  const reg = G.createBaseRegistry();
+  const e = errOf(() => reg.register("statement", "directive", () => null, "my-plugin"));
+  assert.match(e.message, /already registered in the statement list/);
+});
+
+test("registry: an unknown list name and a non-function rule are errors", () => {
+  const reg = G.createRegistry();
+  assert.match(errOf(() => reg.register("nope", "x", () => null)).message, /unknown list 'nope'/);
+  assert.match(errOf(() => reg.register("statement", "x", "not a fn")).message, /must be a function/);
+});
+
+test("registry: an added guard runs only for unclaimed statements, and is skipped under the internal bypass", () => {
+  const reg = G.createBaseRegistry();
+  reg.register("guard", "noPanic", (ctx, unit, text) => { if (/^panic\b/.test(text)) throw new Error("no panic"); return null; }, "my-plugin");
+  assert.match(errOf(() => desugar("panic now\n", undefined, false, reg)).message, /no panic/);
+  assert.strictEqual(desugar("panic now\n", undefined, true, reg), "panic now\n");
+});
+
 report();

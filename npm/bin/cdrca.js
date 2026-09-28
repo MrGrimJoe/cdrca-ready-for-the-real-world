@@ -3,10 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-// `docs` is handled entirely by this npm wrapper, not the Rust binary --
-// it's the only subcommand that exists here and nowhere else. See
-// cdrca-docs.js: it fetches the real guide content live from the main
-// repo on every call rather than bundling a copy, on purpose.
+// `docs` is handled entirely by this npm wrapper, not the Rust binary. See
+// cdrca-docs.js: the guides ship inside this package (npm/docs/).
 if (process.argv[2] === "docs") {
   const { run } = require("./cdrca-docs.js");
   run(process.argv.slice(3)).then((code) => process.exit(code));

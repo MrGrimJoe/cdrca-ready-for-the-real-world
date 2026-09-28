@@ -30,14 +30,17 @@ cdrca12 --help
 ## Docs
 
 ```
-cdrca12 docs <topic>      # cli | animations | quark | plugins | guides
+cdrca12 docs              # list every topic
+cdrca12 docs cli          # a walkthrough of the CLI
+cdrca12 docs example-todo # a complete example project
 ```
 
-This package doesn't bundle any guide content — `docs` fetches it live
-from the main repo on every call (see [docs/README.md](./docs/README.md)
-for why, and the full topic list). Everything else (`create`, `run`,
-`install`, `publish`, ...) is the real Rust CLI, downloaded by
-`install.js` above.
+Every guide, reference doc and example ships inside this package, so `docs`
+works offline and always matches the installed version (`cdrca12 docs --path`
+prints where they live; `--online` fetches the latest from GitHub instead).
+See [docs/README.md](./docs/README.md) for the full index. Everything else
+(`create`, `run`, `install`, `publish`, ...) is the real Rust CLI, downloaded
+by `install.js` above.
 
 ## Source
 

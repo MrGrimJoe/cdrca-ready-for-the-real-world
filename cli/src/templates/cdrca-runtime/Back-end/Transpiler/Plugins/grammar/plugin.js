@@ -974,7 +974,7 @@ function elementRule(ctx, unit, text, textStart) {
   let cap = capWord;
   if (capWord.indexOf(".") !== -1) {
     const [left, right, ...more] = capWord.split(".");
-    if (more.length === 0 && VOCABULARY[left] && VOCABULARY[left].capabilities[right]) {
+    if (more.length === 0 && ctx.vocab[left] && ctx.vocab[left].capabilities[right]) {
       plugin = left;
       cap = right;
     } else {
@@ -995,7 +995,7 @@ function elementRule(ctx, unit, text, textStart) {
   // existing file means").
   let pluginName = plugin;
   if (!pluginName) {
-    const owners = Object.keys(VOCABULARY).filter((p) => VOCABULARY[p].capabilities && VOCABULARY[p].capabilities[cap]);
+    const owners = Object.keys(ctx.vocab).filter((p) => ctx.vocab[p].capabilities && ctx.vocab[p].capabilities[cap]);
     if (owners.length > 1) {
       throw new GrammarError(
         ctx,
@@ -1007,7 +1007,7 @@ function elementRule(ctx, unit, text, textStart) {
     }
     pluginName = owners[0] || "quark";
   }
-  const vocab = VOCABULARY[pluginName];
+  const vocab = ctx.vocab[pluginName];
   const def = vocab && vocab.capabilities[cap];
   if (!def) {
     if (DOM_EVENTS.indexOf(cap) !== -1) {
@@ -1017,8 +1017,8 @@ function elementRule(ctx, unit, text, textStart) {
       throw new GrammarError(ctx, capAt, cap.length, `'${cap}' is written with a dot and a value, not flags`, `e.g.  @${id} bind.text = someState`);
     }
     const all = [];
-    for (const p of Object.keys(VOCABULARY)) {
-      if (VOCABULARY[p].capabilities) all.push(...Object.keys(VOCABULARY[p].capabilities));
+    for (const p of Object.keys(ctx.vocab)) {
+      if (ctx.vocab[p].capabilities) all.push(...Object.keys(ctx.vocab[p].capabilities));
     }
     throw new GrammarError(
       ctx,
@@ -1028,6 +1028,11 @@ function elementRule(ctx, unit, text, textStart) {
       all.length ? "if it belongs to another plugin, add `require <plugin>` first" : ""
     );
   }
+
+  // A capability declared by a plugin (see registry.declare) is claimed by
+  // that plugin's own registered element rule, not by the generic Quark-style
+  // path below — return null so the rules after this one get their turn.
+  if (def.__owner) return null;
 
   // `@page` is reserved for `backdrop` (the whole page, no element). Using it
   // with anything else would silently try to mount into a real element with
@@ -1240,7 +1245,7 @@ function animationsDeclaration(ctx, unit, text, textStart) {
       throw new GrammarError(ctx, textStart, text.length, `expected '<Prop>(...)' after 'object ${name} ='`, `e.g.  object ${name} = BouncingSphere()`);
     }
     const ctorName = callM[1];
-    const table = VOCABULARY.animations.props;
+    const table = ctx.vocab.animations.props;
     const full = table[ctorName];
     if (!full) {
       const names = Object.keys(table);
@@ -1654,7 +1659,7 @@ function rejectLegacySyntax(ctx, text, textStart) {
   m = /^@([A-Za-z_][A-Za-z0-9_-]*)\s+([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)+)\s*=\s*[\s\S]+$/.exec(text);
   if (m) {
     const head = m[2].split(".")[0];
-    const isComponent = Object.keys(VOCABULARY).some((p) => VOCABULARY[p].capabilities && VOCABULARY[p].capabilities[head]);
+    const isComponent = Object.keys(ctx.vocab).some((p) => ctx.vocab[p].capabilities && ctx.vocab[p].capabilities[head]);
     if (isComponent) {
       legacyOnlyError(ctx, textStart, text.length, `@${m[1]} ${m[2]} = …`, `@${m[1]} ${head} <flags…> [accent=#hex]`);
     }
@@ -1694,14 +1699,177 @@ function rejectLegacySyntax(ctx, text, textStart) {
   }
 }
 
+// ---------------------------------------------------------------- registry
+//
+// Every rule the grammar applies is an entry in an ordered registry, not a
+// call hardcoded into desugar(). Three lists, each run in order, first
+// non-null result wins:
+//
+//   element   — statements starting with "@"        (`@id capability ...`)
+//   statement — every other statement                (`require`, `object`, ...)
+//   guard     — run only when nothing above claimed the statement; a guard
+//               either throws (a helpful error) or returns, never rewrites
+//
+// Each entry is { name, owner, fn }. `owner` is "base" for everything in this
+// file. A plugin author working in their copy of the grammar adds entries
+// with a different owner; the packager (step 2) reads the registry, not the
+// source text, to tell "added" from "modified": a base entry that is missing,
+// renamed, reordered or replaced is a change to shared behaviour and is
+// rejected, while entries with a new owner are the plugin's own additions.
+//
+// Order matters and is part of the contract: the base order below is
+// exactly what desugar() used to hardcode, and nothing may be inserted
+// before a base entry — additions run after all base entries of their list.
+const BASE_OWNER = "base";
+const LISTS = ["element", "statement", "guard"];
+
+function createRegistry() {
+  const lists = { element: [], statement: [], guard: [] };
+  const names = new Set();
+  // Copy-on-write view of the vocabulary: base entries are shared, never
+  // mutated; a declaration replaces the affected plugin entry with a copy.
+  const vocab = Object.assign({}, VOCABULARY);
+  const declarations = [];
+  return {
+    lists,
+    vocab,
+    // Declare vocabulary for a plugin. Additive only:
+    //  - a NEW plugin name may declare any `capabilities`;
+    //  - an EXISTING plugin may only gain new capability names;
+    //  - a capability name may not already exist in ANY plugin (a bare
+    //    `@id name` must never become ambiguous because a library was added).
+    // Declared capabilities are tagged `__owner`, which tells the base
+    // element rule to leave them to the declaring plugin's own rule.
+    declare(plugin, decl, owner) {
+      if (!owner || owner === BASE_OWNER) throw new Error("grammar registry: a declaration needs a non-base owner");
+      if (!/^[a-z][a-z0-9-]*$/.test(String(plugin))) throw new Error(`grammar registry: '${plugin}' is not a valid plugin name (lowercase letters, digits, hyphens)`);
+      if (!decl || typeof decl !== "object" || !decl.capabilities || typeof decl.capabilities !== "object") {
+        throw new Error(`grammar registry: declaration for '${plugin}' needs a 'capabilities' object`);
+      }
+      const existing = vocab[plugin];
+      const extraKeys = Object.keys(decl).filter((k) => k !== "capabilities");
+      if (existing && extraKeys.length) {
+        throw new Error(`grammar registry: '${plugin}' already exists — a declaration may only add capabilities to it, not '${extraKeys.join("', '")}'`);
+      }
+      const capNames = Object.keys(decl.capabilities);
+      if (!capNames.length) throw new Error(`grammar registry: declaration for '${plugin}' declares no capabilities`);
+      for (const cap of capNames) {
+        if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(cap)) throw new Error(`grammar registry: '${cap}' is not a valid capability name`);
+        for (const p of Object.keys(vocab)) {
+          if (vocab[p].capabilities && vocab[p].capabilities[cap]) {
+            throw new Error(`grammar registry: capability '${cap}' already exists in '${p}' — pick another name`);
+          }
+        }
+        const def = decl.capabilities[cap];
+        if (!def || typeof def !== "object" || Array.isArray(def)) throw new Error(`grammar registry: capability '${cap}' must be an object`);
+        for (const k of ["variants", "modifiers"]) {
+          if (def[k] !== undefined && !(Array.isArray(def[k]) && def[k].every((x) => typeof x === "string"))) {
+            throw new Error(`grammar registry: '${cap}.${k}' must be an array of strings`);
+          }
+        }
+      }
+      const caps = Object.assign({}, existing ? existing.capabilities : {});
+      for (const cap of capNames) caps[cap] = Object.assign({ variants: [], modifiers: [] }, decl.capabilities[cap], { __owner: owner });
+      vocab[plugin] = existing ? Object.assign({}, existing, { capabilities: caps }) : Object.assign({}, decl, { capabilities: caps });
+      declarations.push({ plugin, capabilities: capNames.slice(), owner });
+    },
+    register(list, name, fn, owner) {
+      if (LISTS.indexOf(list) === -1) throw new Error(`grammar registry: unknown list '${list}' (expected ${LISTS.join(", ")})`);
+      if (typeof fn !== "function") throw new Error(`grammar registry: '${name}' must be a function`);
+      const own = owner || BASE_OWNER;
+      const key = list + ":" + name;
+      if (names.has(key)) throw new Error(`grammar registry: '${name}' is already registered in the ${list} list`);
+      names.add(key);
+      lists[list].push({ name, owner: own, fn });
+    },
+    // A plain, serialisable description — what the packager diffs against.
+    describe() {
+      const out = {};
+      for (const l of LISTS) out[l] = lists[l].map((e) => ({ name: e.name, owner: e.owner }));
+      out.declarations = declarations.map((d) => ({ plugin: d.plugin, capabilities: d.capabilities.slice(), owner: d.owner }));
+      return out;
+    },
+  };
+}
+
+function runList(registry, list, ctx, unit, text, textStart) {
+  const entries = registry.lists[list];
+  for (let i = 0; i < entries.length; i++) {
+    const r = entries[i].fn(ctx, unit, text, textStart);
+    if (r !== null && r !== undefined) return r;
+  }
+  return null;
+}
+
+// The base grammar. Order is the pre-registry hardcoded order — keep it.
+function createBaseRegistry() {
+  const reg = createRegistry();
+  reg.register("element", "elementRule", elementRule);
+  reg.register("statement", "directive", directive);
+  reg.register("statement", "animationsDeclaration", animationsDeclaration);
+  reg.register("statement", "settingStatement", settingStatement);
+  reg.register("statement", "campfireStatement", campfireStatement);
+  reg.register("guard", "rejectLegacySyntax", function (ctx, unit, text, textStart) {
+    rejectLegacySyntax(ctx, text, textStart);
+    return null;
+  });
+  return reg;
+}
+
+// ---------------------------------------------------------------- plugin API
+//
+// What a plugin author's code can see. In their workspace copy of this file
+// they can reach anything in file scope, but the packaged plugin is loaded by
+// applyPackage() below with ONLY the names in PLUGIN_API_NAMES in scope, so
+// the packager refuses code that leans on anything else (see packager.js).
+
+// Split `@id capability rest`, positions relative to the whole file. Returns
+// null if the text isn't shaped like an element statement.
+function splitElement(text, textStart) {
+  const m = /^@([A-Za-z_][A-Za-z0-9_-]*)\s+(\S+)(?:\s+([\s\S]*))?$/.exec(text);
+  if (!m) return null;
+  const capOffset = text.indexOf(m[2], m[1].length + 1);
+  const afterCap = capOffset + m[2].length;
+  const rest = (m[3] || "").trim();
+  const restOffset = rest === "" ? afterCap : afterCap + (text.slice(afterCap).length - text.slice(afterCap).trimStart().length);
+  return { id: m[1], idAt: textStart + 1, cap: m[2], capAt: textStart + capOffset, rest, restAt: textStart + restOffset };
+}
+
+// A plugin's only way to add to the grammar. The owner is fixed when the API
+// is created, so a plugin can't register or declare as anyone else.
+function createPluginApi(registry, owner) {
+  return Object.freeze({
+    register(list, name, fn) { registry.register(list, name, fn, owner); },
+    declare(plugin, decl) { registry.declare(plugin, decl, owner); },
+  });
+}
+
+const PLUGIN_API_NAMES = ["GrammarError", "splitWords", "splitElement", "suggest", "didYouMean", "distance"];
+
+// Apply a packaged plugin ({ format, owner, source }) to a registry. The source
+// runs with only `PLUGIN` and the PLUGIN_API_NAMES helpers in scope.
+function applyPackage(registry, pkg) {
+  if (!pkg || pkg.format !== 1 || typeof pkg.source !== "string" || !pkg.owner) throw new Error("grammar: not a valid plugin package");
+  const helpers = { GrammarError, splitWords, splitElement, suggest, didYouMean, distance };
+  const fn = new Function("PLUGIN", ...PLUGIN_API_NAMES, '"use strict";\n' + pkg.source);
+  fn(createPluginApi(registry, pkg.owner), ...PLUGIN_API_NAMES.map((n) => helpers[n]));
+}
+
+const DEFAULT_REGISTRY = createBaseRegistry();
+
+// What a plugin author's workspace calls (PLUGIN.register / PLUGIN.declare).
+// The owner here is a placeholder — the packager stamps the real one.
+const PLUGIN = createPluginApi(DEFAULT_REGISTRY, "workspace");
+
 // ---------------------------------------------------------------- driver
 
 // Rewrite v2 statements into legacy ones. Returns the SAME string object's
 // value untouched when there is nothing to rewrite.
-function desugar(src, currentFile, allowLegacy) {
+function desugar(src, currentFile, allowLegacy, registry) {
+  const reg = registry || DEFAULT_REGISTRY;
   const lineStarts = [0];
   for (let i = 0; i < src.length; i++) if (src.charCodeAt(i) === 10) lineStarts.push(i + 1);
-  const ctx = { src, lineStarts, currentFile };
+  const ctx = { src, lineStarts, currentFile, vocab: reg.vocab };
 
   const units = scanUnits(src);
   let out = "";
@@ -1716,18 +1884,9 @@ function desugar(src, currentFile, allowLegacy) {
     if (text === "") continue;
     const textStart = unit.start + (raw.length - raw.trimStart().length);
 
-    let rewritten = null;
-    const first = text.charAt(0);
-    if (first === "@") {
-      rewritten = elementRule(ctx, unit, text, textStart);
-    } else {
-      rewritten = directive(ctx, unit, text, textStart);
-      if (rewritten === null) rewritten = animationsDeclaration(ctx, unit, text, textStart);
-      if (rewritten === null) rewritten = settingStatement(ctx, unit, text, textStart);
-      if (rewritten === null) rewritten = campfireStatement(ctx, unit, text, textStart);
-    }
+    const rewritten = runList(reg, text.charAt(0) === "@" ? "element" : "statement", ctx, unit, text, textStart);
     if (rewritten === null) {
-      if (!allowLegacy) rejectLegacySyntax(ctx, text, textStart);
+      if (!allowLegacy) runList(reg, "guard", ctx, unit, text, textStart);
       continue;
     }
 
@@ -1779,4 +1938,12 @@ module.exports.__internals = {
   pxValue,
   emberDurationValue,
   rejectLegacySyntax,
+  createRegistry,
+  createBaseRegistry,
+  createPluginApi,
+  applyPackage,
+  splitElement,
+  PLUGIN_API_NAMES,
+  DEFAULT_REGISTRY,
+  BASE_OWNER,
 };

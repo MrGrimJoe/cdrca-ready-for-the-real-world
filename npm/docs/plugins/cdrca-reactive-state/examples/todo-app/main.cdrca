@@ -1,0 +1,56 @@
+!--- SCENE Main :: todo app ---
+
+// countRemaining/clearDone/toggleTodo/removeTodo are attached to `window`
+// so they're callable both from this file's own expressions (a bare call
+// like `countRemaining(todos)` is left as plain JS by the expression
+// compiler — see docs/REACTIVE-STATE.md#expression-language) and from the
+// plain onclick/onchange attributes inside <template> in index.html
+// (bind.list clones real DOM nodes, so ordinary HTML event attributes
+// work as-is). Every top-level CDRCA statement compiles to its own
+// independently-scoped function, so a plain `function foo(){}` here would
+// NOT be visible from those other places — attaching to `window` is what
+// makes it reachable everywhere, and this block must come BEFORE anything
+// below that calls these functions, since everything runs in source order.
+JS {
+  window.countRemaining = function (list) {
+    var n = 0;
+    for (var i = 0; i < list.length; i++) if (!list[i].done) n = n + 1;
+    return n;
+  };
+
+  window.clearDone = function (list) {
+    return list.filter(function (t) { return !t.done; });
+  };
+
+  window.toggleTodo = function (id) {
+    var todos = CDRCA.reactive.get("todos");
+    CDRCA.reactive.set("todos", todos.map(function (t) {
+      return t.id === id ? Object.assign({}, t, { done: !t.done }) : t;
+    }));
+  };
+
+  window.removeTodo = function (id) {
+    var todos = CDRCA.reactive.get("todos");
+    CDRCA.reactive.set("todos", todos.filter(function (t) { return t.id !== id; }));
+  };
+}
+
+state todos = []
+state nextId = 1
+state newTodoText = ""
+
+computed remaining = countRemaining(todos)
+
+// Two-way: typing in the input keeps newTodoText in sync.
+@newTodoInput bind.value = newTodoText
+
+// Add a todo, reset the input, bump the id counter.
+@addBtn click => todos = todos.concat([{ id: nextId, text: newTodoText, done: false }]); nextId += 1; newTodoText = ""
+
+// Renders #todoList from the todos array using #todoItemTemplate below.
+@todoList bind.list = todos using todoItemTemplate
+
+@remainingCount bind.text = remaining
+@clearDoneBtn click => todos = clearDone(todos)
+
+!---END---

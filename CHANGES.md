@@ -8,11 +8,29 @@ A separate line of work (`cdrca build web`, `build app --target exe|pwa`) is bei
 session. Nothing here touches `build.rs`. `create.rs`, `run.rs` and `main.rs` are touched, but only
 to add new module registrations and a page-ownership check — see below for exactly what.
 
-**Before doing anything else: run `./tools/verify-all.sh`.** One command, 11 steps (Rust, vocabulary
+**Before doing anything else: run `./tools/verify-all.sh`.** One command, 12 steps (Rust, vocabulary
 drift, grammar, animations back- and front-end, the runtime, background end to end, the project
 server, reactive-state, the legacy corpus, the v2 guide examples). Prerequisites are listed at the
 top of the script. Without `jsdom` the DOM-based test files print `SKIPPED` and the script says so
 in each step's line — that's a weaker check, not a failure.
+
+## Fix — ember, campfire and reactive-state browser scripts are now bundled
+
+`cdrca_bundle.rs` only wrote each of these plugins' `plugin.js`, so their statements compiled but
+`Ember`, `Campfire` and `CDRCA.reactive` never existed on a served page. `BUNDLED_FILES` now also
+carries each plugin's `cdrca.json` and library files under `Plugins/<name>/`, which is where
+`plugin_frontend_patch.rs` already looks when it resolves `load <plugin>.<library>`.
+`cdrca-reactive-state` gained a `core` library (`runtime.js`) so it loads before `store`/`query`.
+Use `load ember.core`, `load campfire.core`, `load cdrca-reactive-state.core`. New test:
+`every_declared_library_is_bundled`. Not compiled here (no Rust toolchain): run `cargo test` or CI.
+
+## 0.2.6 — npm package carries all docs; version bump
+
+`cli/Cargo.toml`, `cli/Cargo.lock` and `npm/package.json` are now 0.2.6 (the npm postinstall
+downloads the release binary for its own exact version, so tag the release `v0.2.6`).
+`npm/docs/` now contains every guide, reference doc, plugin README and example (26 files),
+and `cdrca12 docs` reads them from disk instead of fetching from GitHub (`--online` still does).
+Run `node tools/sync-npm-docs.js` before `npm publish`; `--check` fails if it has drifted.
 
 ## Phase 1 — the v2 statement grammar
 

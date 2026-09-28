@@ -1,5 +1,9 @@
 name: Build CDRCA Installers
 
+# NOTE: Linux assets (deb/rpm/tar.gz/cdrca-linux-x64) are built by
+# linux-installer.yml (Ubuntu 22.04, glibc 2.35 floor), not here -- this file is
+# Windows-only now. Both trigger on the same tag and attach to the same release.
+#
 # Runs on every tag push (e.g. v1.2.0) and can be triggered manually.
 # Two independent jobs, each building and packaging its own platform end
 # to end (own Rust build, own .vsix package, own asset upload) rather
@@ -147,101 +151,3 @@ jobs:
         with:
           name: cdrca-installer-windows
           path: installer/output/cdrca-installer.exe
-
-  build-linux-installer:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain (for building the CLI itself)
-        uses: dtolnay/rust-toolchain@stable
-
-      # Runs the unit tests too, not just a build -- a plugin registered in
-      # plugins.json but missing from cdrca_bundle.rs's BUNDLED_FILES
-      # compiles fine and only fails here (ember/campfire shipped that
-      # way once before this step existed). Linux job only: the tests are
-      # platform-independent, so running them twice would just be slower.
-      # A failure here stops the release before any asset is built.
-      - name: Run cargo test
-        working-directory: cli
-        run: cargo test
-
-      - name: Build cdrca (release)
-        id: build_cli
-        working-directory: cli
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cargo build --release 2>&1 | tee ../cargo_build_output.log
-
-      - name: Commit build log on failure (self-diagnosing)
-        if: steps.build_cli.outcome == 'failure'
-        run: |
-          git config user.email "ci@github-actions.local"
-          git config user.name "GitHub Actions CI"
-          git fetch origin ci-debug-logs 2>/dev/null || true
-          git checkout -B ci-debug-logs
-          cp cargo_build_output.log "cargo-build-linux-run${GITHUB_RUN_NUMBER}.log"
-          git add -f "cargo-build-linux-run${GITHUB_RUN_NUMBER}.log"
-          git commit -m "CI debug log: Linux cargo build failure, run ${GITHUB_RUN_NUMBER}"
-          git push origin ci-debug-logs --force
-
-      - name: Fail the job if the build actually failed
-        if: steps.build_cli.outcome == 'failure'
-        run: exit 1
-
-      - name: Set up Node.js (for packaging the VS Code extension)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Package VS Code extension as .vsix
-        # Built independently here rather than shared with the Windows
-        # job's artifact -- the two jobs run in parallel and don't
-        # depend on each other, on purpose (see the note at the top of
-        # this file). The extension itself isn't platform-specific, so
-        # this just repeats the same packaging step.
-        working-directory: extension
-        run: |
-          npm install
-          npx @vscode/vsce package --out cdrca-extension.vsix
-
-      - name: Stage installer assets
-        run: |
-          mkdir -p installer/linux/staged
-          cp cli/target/release/cdrca installer/linux/staged/cdrca
-          chmod +x installer/linux/staged/cdrca
-          cp installer/linux/install.sh installer/linux/staged/install.sh
-          chmod +x installer/linux/staged/install.sh
-          cp LICENSE.md installer/linux/staged/LICENSE.md
-          cp extension/cdrca-extension.vsix installer/linux/staged/cdrca-extension.vsix
-
-      - name: Package cdrca-installer-linux.tar.gz
-        run: |
-          mkdir -p installer/linux/output
-          tar czf installer/linux/output/cdrca-installer-linux.tar.gz -C installer/linux/staged .
-
-      - name: Rename raw binary for release (platform-suffixed, for the npm wrapper)
-        if: startsWith(github.ref, 'refs/tags/')
-        run: cp installer/linux/staged/cdrca cdrca-linux-x64
-
-      - name: Upload release assets
-        # Same tag/release as the Windows job's upload -- action-gh-release
-        # appends to an existing release rather than replacing it, so it's
-        # safe for both jobs to upload to the same tag independently.
-        # cdrca-linux-x64 (plain binary, no installer script) is what the
-        # npm wrapper package downloads on postinstall on Linux.
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            installer/linux/output/cdrca-installer-linux.tar.gz
-            cdrca-linux-x64
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload build artifact (also available on non-tag manual runs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: cdrca-installer-linux
-          path: installer/linux/output/cdrca-installer-linux.tar.gz

@@ -1,30 +1,40 @@
 # Docs
 
-This package doesn't bundle guide content — every real word of it lives
-in, and is fetched live from, the main repo. That's intentional: this
-whole npm package is a thin wrapper around
-[github.com/MrGrimJoe/cdrca-ready-for-the-real-world](https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world)
-(same as the `cdrca` binary itself, downloaded from that repo's Releases
-on every install) — if that repo goes away, this stops working too, on
-purpose.
+Everything here ships inside the `cdrca12` npm package and is read by
+`cdrca12 docs <topic>` (offline, matching your installed version). Run
+`cdrca12 docs` for the topic list, or open the files directly:
+`cdrca12 docs --path` prints this folder.
 
-## Read a guide
+## Start here
 
-```
-cdrca12 docs <topic>
-```
+| Topic | File | What |
+|---|---|---|
+| `guides` | `guides/README.md` | Index of the guides |
+| `cli` | `guides/CLI-GUIDE.md` | The CLI, command by command, learn-by-doing |
+| `layout` | `guides/PROJECT-LAYOUT.md` | How a project is laid out and served |
+| `syntax` | `SYNTAX.md` | The CDRCA statement grammar |
+| `style` | `guides/SYNTAX-STYLE-GUIDE.md` | Style guide |
 
-| Topic | What |
-|---|---|
-| `cli` | Walking through the CLI command by command |
-| `animations` | The `animations` plugin's scene/prop/action syntax |
-| `quark` | The `quark` plugin's `@directive` syntax and component reference |
-| `plugins` | Building your own plugin or library |
-| `guides` | The guides index itself |
+## Plugins
 
-Or read them online directly:
-[github.com/MrGrimJoe/cdrca-ready-for-the-real-world/tree/main/docs/guides](https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world/tree/main/docs/guides)
+| Topic | File | What |
+|---|---|---|
+| `animations` | `guides/ANIMATIONS-SYNTAX.md` | Scene/prop/action syntax |
+| `quark` | `guides/QUARK-SYNTAX.md` | `@directive` syntax and components |
+| `quark-reference` | `QUARK.md` | Quark reference |
+| `reactive-state` | `REACTIVE-STATE.md` | State, computed, bind, store, query |
+| `ember` | `plugins/ember/README.md` | Motion and effects |
+| `campfire` | `plugins/campfire/README.md` | Dialogue and branching narrative |
+| `plugins` | `guides/PLUGIN-DEVELOPMENT.md` | Build your own plugin or library |
+| `libraries` | `PLUGIN-LIBRARIES.md` | `load <plugin>.<library>` bundles |
 
-No network right now? `cdrca12 docs <topic>` will tell you the fetch
-failed rather than showing you something stale — there's nothing stale
-to fall back to here, by design.
+## Reference
+
+`commands` (CLI-COMMANDS.md), `manifest` (MANIFEST-SPEC.md), `permissions`,
+`architecture`, `licensing`, `contributing`, `plan` (design/LANGUAGE-PLAN.md),
+`changes` (CHANGES.md).
+
+## Examples
+
+Complete, runnable: `example-ember`, `example-campfire`, `example-todo`,
+`example-todo-page` (under `plugins/*/examples/`).

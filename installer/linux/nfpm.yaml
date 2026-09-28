@@ -1,0 +1,51 @@
+# Native Linux packages (.deb and .rpm) for the cdrca CLI, built by nfpm from
+# the already-built release binary. See .github/workflows/linux-installer.yml.
+#
+# Expects, relative to the repo root (the workflow stages these):
+#   stage/cdrca                 the release binary
+#   stage/LICENSE.md
+#   stage/cdrca-extension.vsix  the VS Code extension
+# and the environment variable VERSION (from cli/Cargo.toml).
+#
+# Unlike installer/linux/install.sh (per-user, ~/.local), these install
+# system-wide (/usr/bin) and are installed, upgraded and removed by the
+# distro's own package manager. Nothing here edits shell startup files.
+
+name: cdrca
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: "1"
+section: devel
+priority: optional
+# Placeholder contact: a Debian package needs a maintainer field. Replace it.
+maintainer: "ISLAH <noreply@islah.invalid>"
+description: |
+  CLI, package manager, and build tool for the CDRCA animation DSL.
+  Create, run and package CDRCA projects, and install CDRCA packages.
+homepage: https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world
+license: IOSL
+
+contents:
+  - src: stage/cdrca
+    dst: /usr/bin/cdrca
+    file_info:
+      mode: 0755
+  - src: stage/LICENSE.md
+    dst: /usr/share/doc/cdrca/LICENSE.md
+  - src: stage/cdrca-extension.vsix
+    dst: /usr/share/cdrca/cdrca-extension.vsix
+
+scripts:
+  postinstall: installer/linux/postinstall.sh
+
+# The binary is built on Ubuntu 22.04 (glibc 2.35) and links only against
+# glibc (HTTPS is rustls, not OpenSSL). Declare that floor so a package
+# manager refuses to install it somewhere it would fail to start.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+  rpm:
+    depends:
+      - glibc >= 2.35

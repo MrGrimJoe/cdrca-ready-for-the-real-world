@@ -95,21 +95,22 @@ intentionally doesn't duplicate that documentation.
   jobs: a Windows installer (Inno Setup, `cdrca-installer.iss`) that
   bundles the CLI, a silent Rust toolchain install (so `cdrca build
   app` works immediately, zero extra setup), the CDRCA branding/icons,
-  and optionally the VS Code extension; and a Linux installer
-  (`installer/linux/install.sh`), a plain shell script + tarball that
-  puts the CLI on `PATH` and optionally installs the same VS Code
-  extension. See [Platform support](#platform-support) below for what
-  differs between the two.
+  and optionally the VS Code extension; and the Linux installers:
+  native `.deb` and `.rpm` packages (`installer/linux/nfpm.yaml`) plus a
+  per-user tarball with `installer/linux/install.sh`, all built by
+  `.github/workflows/linux-installer.yml`. See
+  [Platform support](#platform-support) below for what differs between
+  the two.
 - **`docs/`** — architecture, manifest spec, CLI reference, plugin
   security model, licensing notes, and contributor notes. See
   [Documentation](#documentation) below.
 
 ## Platform support
 
-**Windows and Linux**, both built and released by CI
-(`.github/workflows/release.yml` runs `build-windows-installer` and
-`build-linux-installer` as two independent jobs on every tagged
-release). The CLI's own commands — `create`, `install`, `run`,
+**Windows and Linux**, both built and released by CI (the Linux
+packages by `.github/workflows/linux-installer.yml`, which installs and
+removes every package in a clean container before publishing anything).
+The CLI's own commands — `create`, `install`, `run`,
 `publish`, `doctor` — work the same way on both. A few things genuinely
 differ by platform, not as oversights but as real, documented scope
 decisions:
@@ -149,12 +150,25 @@ release for your platform from this repo's
   for `.cdrca` files in Explorer, and — if VS Code is detected on your
   machine — offers to install the VS Code extension too (you can still
   opt in manually later if VS Code isn't installed yet).
-- **Linux:** `cdrca-installer-linux.tar.gz` — extract it and run
-  `./install.sh`. Puts `cdrca` on PATH (`~/.local/bin` by default,
-  adding it to your shell rc file if it isn't there already) and, if
-  `code` is on PATH, offers to install the VS Code extension the same
-  way. See [Platform support](#platform-support) above for what's
-  different from the Windows installer.
+- **Linux:** pick one from the Releases page.
+  - **`.deb`** (Debian, Ubuntu): `sudo apt install ./cdrca_<version>-1_amd64.deb`
+  - **`.rpm`** (Fedora): `sudo dnf install ./cdrca-<version>-1.x86_64.rpm`
+
+    Both install `cdrca` to `/usr/bin` and are upgraded and removed by
+    your package manager. They can't ask questions, so the VS Code
+    extension is left at `/usr/share/cdrca/cdrca-extension.vsix`; install
+    it with `code --install-extension` on that path.
+  - **`cdrca-installer-linux.tar.gz`** — no root needed: extract it and
+    run `./install.sh`. Puts `cdrca` on PATH (`~/.local/bin` by default,
+    adding it to your shell rc file if it isn't there already) and, if
+    `code` is on PATH, offers to install the VS Code extension.
+
+  All three need **glibc 2.35 or newer** (Ubuntu 22.04+, Debian 12+,
+  Fedora 36+). RHEL/Rocky/Alma 9, Ubuntu 20.04 and Debian 11 are not
+  supported; the packages refuse to install there rather than fail to
+  start. `SHA256SUMS` on the release lists a checksum for every file.
+  See [Platform support](#platform-support) above for what's different
+  from the Windows installer.
 
 **Option B — install via npm:** `npm install -g cdrca12` works on both
 platforms — it downloads the same prebuilt binary from the same

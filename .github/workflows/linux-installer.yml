@@ -1,0 +1,234 @@
+name: Linux installer
+
+# Builds the Linux installers for the cdrca CLI:
+#   cdrca_<version>-1_amd64.deb         Debian / Ubuntu
+#   cdrca-<version>-1.x86_64.rpm        Fedora and other RPM distros
+#   cdrca-installer-linux.tar.gz        per-user install via installer/linux/install.sh
+#   cdrca-linux-x64                     the bare binary the npm wrapper (npm/install.js) downloads
+#   SHA256SUMS
+#
+# Every package is installed and removed in a clean container before anything
+# is published. On a tag push the files are attached to that tag's release.
+#
+# Support floor: the binary is built on Ubuntu 22.04, so it needs glibc 2.35 or
+# newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). RHEL/Rocky/Alma 9 (glibc 2.34),
+# Ubuntu 20.04 and Debian 11 are NOT supported; the packages declare that floor
+# and the "refuses" job below checks that the package managers enforce it.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "installer/linux/**"
+      - ".github/workflows/linux-installer.yml"
+      - "cli/**"
+      - "extension/**"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NFPM_VERSION: "2.47.0"
+
+jobs:
+  build:
+    name: Build packages
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from cli/Cargo.toml
+        id: version
+        run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)"
+          if [ -z "$VERSION" ]; then echo "::error::could not read the version from cli/Cargo.toml"; exit 1; fi
+          # A release tag must match the crate version, or the assets would be
+          # labelled with a version the binary does not report.
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+                echo "::error::tag $GITHUB_REF_NAME does not match cli/Cargo.toml version $VERSION"
+                exit 1
+              fi
+              ;;
+          esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Build the release binary
+        working-directory: cli
+        run: cargo build --release --locked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage files
+        run: |
+          mkdir -p stage dist
+          install -m 755 cli/target/release/cdrca stage/cdrca
+          cp LICENSE.md stage/LICENSE.md
+          (cd extension && npx --yes @vscode/vsce@4.0.0 package --no-dependencies -o ../stage/cdrca-extension.vsix)
+          test -s stage/cdrca-extension.vsix
+
+      - name: Install nfpm (checksum verified)
+        run: |
+          base="https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}"
+          file="nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          curl -sSfL -o "$file" "$base/$file"
+          curl -sSfL -o checksums.txt "$base/checksums.txt"
+          grep " $file\$" checksums.txt | sha256sum -c -
+          tar -xzf "$file" nfpm
+          ./nfpm --version > /dev/null
+
+      - name: Build .deb and .rpm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ./nfpm package --config installer/linux/nfpm.yaml --packager deb --target dist/
+          ./nfpm package --config installer/linux/nfpm.yaml --packager rpm --target dist/
+
+      - name: Build the tarball installer and the bare binary
+        run: |
+          mkdir -p tarball/cdrca-installer-linux
+          cp stage/cdrca stage/cdrca-extension.vsix stage/LICENSE.md installer/linux/install.sh tarball/cdrca-installer-linux/
+          tar -C tarball -czf dist/cdrca-installer-linux.tar.gz cdrca-installer-linux
+          cp stage/cdrca dist/cdrca-linux-x64
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # Install every package in a clean container, run it, remove it.
+  smoke:
+    name: Install ${{ matrix.kind }} on ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { kind: deb, image: "ubuntu:22.04" }
+          - { kind: deb, image: "ubuntu:24.04" }
+          - { kind: deb, image: "debian:12" }
+          - { kind: rpm, image: "fedora:latest" }
+          - { kind: tarball, image: "ubuntu:22.04" }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-installers
+          path: dist
+
+      - name: Install, run, remove
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          KIND: ${{ matrix.kind }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          case "$KIND" in
+            deb)
+              script='set -eux
+                apt-get update -qq
+                apt-get install -y -qq /pkg/cdrca_*_amd64.deb
+                cdrca --version | grep -F "$VERSION"
+                test -f /usr/share/cdrca/cdrca-extension.vsix
+                apt-get remove -y -qq cdrca
+                if command -v cdrca; then echo "cdrca is still installed after removal"; exit 1; fi'
+              ;;
+            rpm)
+              script='set -eux
+                dnf install -y -q /pkg/cdrca-*.x86_64.rpm
+                cdrca --version | grep -F "$VERSION"
+                test -f /usr/share/cdrca/cdrca-extension.vsix
+                rpm -e cdrca
+                if command -v cdrca; then echo "cdrca is still installed after removal"; exit 1; fi'
+              ;;
+            tarball)
+              script='set -eux
+                export HOME="$(mktemp -d)" SHELL=/bin/bash
+                tar -xzf /pkg/cdrca-installer-linux.tar.gz -C "$HOME"
+                (cd "$HOME/cdrca-installer-linux" && bash ./install.sh </dev/null)
+                "$HOME/.local/bin/cdrca" --version | grep -F "$VERSION"
+                test -f "$HOME/.local/share/cdrca/cdrca-extension.vsix"
+                grep -F ".local/bin" "$HOME/.bashrc"'
+              ;;
+          esac
+          docker run --rm -e VERSION -v "$PWD/dist:/pkg:ro" "$IMAGE" sh -c "$script"
+
+  # The packages promise glibc >= 2.35. Prove the package managers enforce it:
+  # installing on an older system must FAIL, not install a binary that cannot start.
+  refuses:
+    name: Refuses ${{ matrix.kind }} on ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { kind: deb, image: "debian:11" }
+          - { kind: deb, image: "ubuntu:20.04" }
+          - { kind: rpm, image: "rockylinux:9" }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-installers
+          path: dist
+
+      - name: Install must be refused
+        env:
+          KIND: ${{ matrix.kind }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          if [ "$KIND" = deb ]; then
+            script='apt-get update -qq && apt-get install -y -qq /pkg/cdrca_*_amd64.deb'
+          else
+            script='dnf install -y -q /pkg/cdrca-*.x86_64.rpm'
+          fi
+          if out="$(docker run --rm -v "$PWD/dist:/pkg:ro" "$IMAGE" sh -c "$script" 2>&1)"; then
+            echo "$out"
+            echo "::error::$KIND installed on $IMAGE, which is below the glibc 2.35 floor"
+            exit 1
+          fi
+          echo "$out" | tail -n 15
+          # It must have been refused because of the glibc requirement, not
+          # because something else (a network hiccup, say) went wrong.
+          if ! echo "$out" | grep -Eqi 'libc6|glibc'; then
+            echo "::error::install failed on $IMAGE, but not because of the glibc requirement"
+            exit 1
+          fi
+          echo "refused because of the glibc requirement, as intended"
+
+  publish:
+    name: Attach to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, smoke, refuses]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-installers
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

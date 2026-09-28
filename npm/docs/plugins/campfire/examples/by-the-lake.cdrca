@@ -1,0 +1,16 @@
+!--- SCENE ByTheLake :: A quiet evening, a stranger, and a choice ---
+
+speaker narrator name="Narrator" color=#9a9a9a
+speaker aria name="Aria" color=#ffcc66
+
+say narrator "The wind rolls off the lake as the last light fades."
+say narrator "Someone else is already at the fire — you weren't expecting company."
+say aria "Didn't think anyone else knew this spot." wait=2000ms
+say aria "Well. Sit, if you want."
+
+choice aria "How do you answer?" {
+  option "\"Thanks — mind if I stay a while?\"" signal=stayFriendly
+  option "\"I was just leaving, actually.\"" signal=leaveCold
+}
+
+!---END---

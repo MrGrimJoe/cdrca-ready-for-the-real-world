@@ -166,21 +166,79 @@ const BUNDLED_FILES: &[(&str, &str)] = &[
         include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/plugin.js"),
     ),
     (
-        "Back-end/Transpiler/Plugins/quark/plugin.js",
-        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/quark/plugin.js"),
-    ),
-    (
-        // Registered in plugins.json but never added here -- caught by
-        // every_registered_plugin_is_bundled() below, which panics on the
-        // first missing entry it finds in plugins.json's array order
-        // (ember happened to come before campfire there); both were
-        // actually missing, not just the one the panic message named.
+        // `ember` and `campfire` are bundled by default, so they are registered in
+        // plugins.json — which means (same rule as the entries above) their
+        // files MUST be written here, or a CLI-scaffolded project would register
+        // plugins with no file behind them and every `@id fx ...` / `speaker` /
+        // `say` / `choice` statement would fail with no warning from the loader.
+        // Their `load ember.*` / `load campfire.*` library bundles are staged
+        // separately, the same way `cdrca-reactive-state`'s are.
         "Back-end/Transpiler/Plugins/ember/plugin.js",
         include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/plugin.js"),
     ),
     (
         "Back-end/Transpiler/Plugins/campfire/plugin.js",
         include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/campfire/plugin.js"),
+    ),
+    // Each default-bundled plugin's own manifest and browser-side library
+    // bundles. `plugin_frontend_patch.rs` resolves `load <plugin>.<library>`
+    // (and `@useLib`) by reading `Plugins/<plugin>/cdrca.json` and copying the
+    // declared files into `Front-end/Transpiler-Plugins/<plugin>/`. Without
+    // these, only `plugin.js` existed, so the statements compiled but
+    // `Ember`, `Campfire` and `CDRCA.reactive` were never defined on a served
+    // page. Declared in cdrca.json's `libraries`; see the
+    // `every_declared_library_is_bundled` test below.
+    (
+        "Back-end/Transpiler/Plugins/ember/cdrca.json",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/cdrca.json"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/ember/ember-core.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/ember-core.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/ember/ember-easings.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/ember-easings.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/ember/ember-presets.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/ember-presets.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/ember/ember-sequences.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/ember/ember-sequences.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/campfire/cdrca.json",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/campfire/cdrca.json"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/campfire/campfire-core.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/campfire/campfire-core.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/campfire/campfire-ui.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/campfire/campfire-ui.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/cdrca-reactive-state/cdrca.json",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/cdrca.json"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/cdrca-reactive-state/runtime.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/runtime.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/cdrca-reactive-state/reactive-state-store.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/reactive-state-store.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/cdrca-reactive-state/reactive-state-query.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/cdrca-reactive-state/reactive-state-query.js"),
+    ),
+    (
+        "Back-end/Transpiler/Plugins/quark/plugin.js",
+        include_str!("templates/cdrca-runtime/Back-end/Transpiler/Plugins/quark/plugin.js"),
     ),
     (
         "Front-end/index.html",
@@ -412,6 +470,31 @@ mod tests {
             }
         }
         assert!(checked >= 5, "expected several relative requires, saw {checked}");
+    }
+
+    /// Every library a bundled plugin declares in its cdrca.json has to be an
+    /// actual file next to it, or `load <plugin>.<library>` resolves to
+    /// nothing and the browser global never exists.
+    #[test]
+    fn every_declared_library_is_bundled() {
+        let mut checked = 0;
+        for (rel, contents) in BUNDLED_FILES {
+            if !rel.starts_with("Back-end/Transpiler/Plugins/") || !rel.ends_with("/cdrca.json") {
+                continue;
+            }
+            let dir = rel.trim_end_matches("cdrca.json");
+            let manifest: serde_json::Value = serde_json::from_str(contents).unwrap();
+            let Some(libs) = manifest["libraries"].as_object() else { continue };
+            for (name, file) in libs {
+                let file = file.as_str().unwrap();
+                assert!(
+                    bundled(&format!("{dir}{file}")).is_some(),
+                    "{rel} declares library {name:?} -> {file} but it is not in BUNDLED_FILES"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 9, "expected ember + campfire + reactive-state libraries, saw {checked}");
     }
 
     #[test]
