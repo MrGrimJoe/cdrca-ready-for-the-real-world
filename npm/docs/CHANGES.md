@@ -8,7 +8,7 @@ A separate line of work (`cdrca build web`, `build app --target exe|pwa`) is bei
 session. Nothing here touches `build.rs`. `create.rs`, `run.rs` and `main.rs` are touched, but only
 to add new module registrations and a page-ownership check — see below for exactly what.
 
-**Before doing anything else: run `./tools/verify-all.sh`.** One command, 11 steps (Rust, vocabulary
+**Before doing anything else: run `./tools/verify-all.sh`.** One command, 12 steps (Rust, vocabulary
 drift, grammar, animations back- and front-end, the runtime, background end to end, the project
 server, reactive-state, the legacy corpus, the v2 guide examples). Prerequisites are listed at the
 top of the script. Without `jsdom` the DOM-based test files print `SKIPPED` and the script says so
