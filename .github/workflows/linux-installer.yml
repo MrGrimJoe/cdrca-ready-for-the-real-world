@@ -150,7 +150,8 @@ jobs:
                 cdrca --version | grep -F "$VERSION"
                 test -f /usr/share/cdrca/cdrca-extension.vsix
                 apt-get remove -y -qq cdrca
-                if command -v cdrca; then echo "cdrca is still installed after removal"; exit 1; fi'
+                hash -r
+                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi'
               ;;
             rpm)
               script='set -eux
@@ -158,7 +159,8 @@ jobs:
                 cdrca --version | grep -F "$VERSION"
                 test -f /usr/share/cdrca/cdrca-extension.vsix
                 rpm -e cdrca
-                if command -v cdrca; then echo "cdrca is still installed after removal"; exit 1; fi'
+                hash -r
+                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi'
               ;;
             tarball)
               script='set -eux
@@ -197,7 +199,7 @@ jobs:
           IMAGE: ${{ matrix.image }}
         run: |
           if [ "$KIND" = deb ]; then
-            script='apt-get update -qq && apt-get install -y -qq /pkg/cdrca_*_amd64.deb'
+            script='apt-get update -qq && apt-get install -y /pkg/cdrca_*_amd64.deb'
           else
             script='dnf install -y -q /pkg/cdrca-*.x86_64.rpm'
           fi
