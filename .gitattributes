@@ -1,0 +1,18 @@
+# Windows' git default (core.autocrlf=true, including on windows-latest
+# GitHub Actions runners) checks text files out with CRLF. Several tools
+# in this repo compare freshly-generated content (always \n) against a
+# file read straight off disk with strict string equality --
+# tools/generate-vocabulary.js's --check mode is one -- so a CRLF
+# checkout makes that comparison fail unconditionally, with no real
+# content drift involved. Force LF everywhere so a checkout is
+# byte-identical on every platform.
+* text=auto eol=lf
+
+# Binary/generated assets some checkout might otherwise try to normalize.
+*.png binary
+*.ico binary
+*.vsix binary
+*.exe binary
+*.deb binary
+*.rpm binary
+*.tar.gz binary

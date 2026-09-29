@@ -15,6 +15,7 @@ const { test, report, assert } = require("./harness");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { pathToFileURL } = require("url");
 
 const dom = new JSDOM(
   '<!doctype html><html><body><div id="heroSection" style="width:300px;height:200px;"></div></body></html>',
@@ -67,7 +68,10 @@ test("real dynamic import() of an actual module file on disk, not an injected fa
   Backdrop._importModule = (p) => import(p);
 
   const target = dom.window.document.getElementById("heroSection");
-  await Backdrop.attach("heroSection", modulePath);
+  // Node's import() requires a file:// URL for absolute paths on Windows
+  // (a raw "C:\..." string throws "Received protocol 'c:'") -- modulePath
+  // itself stays a plain OS path for the fs.writeFileSync() call above.
+  await Backdrop.attach("heroSection", pathToFileURL(modulePath).href);
 
   const canvas = target.querySelector("canvas");
   assert.strictEqual(canvas.getAttribute("data-mounted"), "yes");
