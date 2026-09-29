@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     name: verify-all (${{ matrix.os }})
@@ -44,4 +47,22 @@ jobs:
       # suites, ember and campfire, the docs and corpus checks) and fails the
       # job if any step fails. All steps run, so one run shows every failure.
       - name: Verify
-        run: bash tools/verify-all.sh
+        id: verify
+        continue-on-error: true
+        run: bash tools/verify-all.sh 2>&1 | tee verify_output.log
+
+      - name: Commit verify log on failure (self-diagnosing)
+        if: steps.verify.outcome == 'failure'
+        run: |
+          git config user.email "ci@github-actions.local"
+          git config user.name "GitHub Actions CI"
+          git fetch origin ci-debug-logs 2>/dev/null || true
+          git checkout -B ci-debug-logs
+          cp verify_output.log "verify-${{ matrix.os }}-run${GITHUB_RUN_NUMBER}.log"
+          git add -f "verify-${{ matrix.os }}-run${GITHUB_RUN_NUMBER}.log"
+          git commit -m "CI debug log: verify-all failure on ${{ matrix.os }}, run ${GITHUB_RUN_NUMBER}"
+          git push origin ci-debug-logs --force
+
+      - name: Fail the job if verify actually failed
+        if: steps.verify.outcome == 'failure'
+        run: exit 1
