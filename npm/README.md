@@ -4,9 +4,10 @@ npm wrapper for the CDRCA CLI. Downloads the prebuilt `cdrca` binary from
 [GitHub Releases](https://github.com/MrGrimJoe/cdrca-ready-for-the-real-world/releases)
 on install and runs it.
 
-**Windows and Linux** — CI builds both as two separate jobs (see
-`.github/workflows/release.yml` in the main repo), each attaching its own
-platform-suffixed binary to the release. Installing on any other platform
+**Windows and Linux** — CI builds both (see `.github/workflows/installers.yml`
+in the main repo, which calls `release.yml` for Windows and
+`linux-installer.yml` for Linux) and attaches each platform-suffixed binary,
+alongside every installer, to the release. Installing on any other platform
 fails with a clear error instead of silently installing something broken.
 
 Note: `cdrca build app` (packaging a CDRCA project into a distributable

@@ -9,18 +9,32 @@
   `.vsix` rather than published separately. See `extension/README.md`.
 - `installer/` — the Windows and Linux installer sources: the Inno Setup
   script (`cdrca-installer.iss`) that produces `cdrca-installer.exe`,
-  and `installer/linux/install.sh`, the Linux counterpart packaged into
-  `cdrca-installer-linux.tar.gz`. CI-staged assets for both live under
-  their respective `staged/` directories at build time, not committed.
+  and `installer/linux/`, which holds `install.sh` (packaged into
+  `cdrca-installer-linux.tar.gz`), `nfpm.yaml` (the `.deb`/`.rpm`), and
+  the logo files every Linux package installs: `icons/` (regenerate with
+  `python3 installer/linux/make-icons.py`), `cdrca.desktop`,
+  `cdrca-mime.xml`. CI-staged assets live under `staged/` at build time,
+  not committed.
 - `docs/` — this folder.
-- `.github/workflows/release.yml` — two independent jobs,
-  `build-windows-installer` and `build-linux-installer`, each building
-  the CLI for its own platform, packaging the extension, and compiling
-  its own installer on every tagged release (`v*` push) or manual
-  `workflow_dispatch` run. A GitHub Release is only created on tag
-  pushes (Releases require a tag to attach to); manual runs skip that
-  step and just upload each platform's installer as a workflow artifact
-  instead (`cdrca-installer-windows`, `cdrca-installer-linux`).
+- `.github/workflows/installers.yml` — **the one to run for a release.**
+  On a `v*` tag push or a manual `workflow_dispatch` run it calls the two
+  platform workflows below, gathers every installer into one artifact,
+  `cdrca-installers-all` (Windows installer + bare `.exe`, `.deb`, `.rpm`,
+  Linux tarball, bare Linux binary, and one `SHA256SUMS` covering all of
+  them), and on a tag attaches that same set to the GitHub Release
+  (Releases require a tag to attach to; manual runs only leave the
+  artifact). It fails if any installer is missing.
+- `.github/workflows/release.yml` — the **Windows** build only (job
+  `build-windows-installer`): the CLI, the `.vsix`, and the Inno Setup
+  installer. Leaves the `cdrca-installer-windows` artifact. The tag must
+  equal the `cli/Cargo.toml` version; that version is passed to Inno Setup
+  as `/DMyAppVersion`.
+- `.github/workflows/linux-installer.yml` — the **Linux** build (`.deb`,
+  `.rpm`, tarball, bare binary), installed and removed in clean containers
+  before anything is published; also runs on pull requests touching
+  `installer/linux/**`. Leaves the `linux-installers` artifact.
+  Neither platform workflow publishes a release itself any more —
+  `installers.yml` does that once, for everything.
 
 ## Building locally
 
@@ -102,7 +116,9 @@ cp LICENSE.md installer/linux/staged/
 cp extension/cdrca-extension.vsix installer/linux/staged/   # optional
 tar czf cdrca-installer-linux.tar.gz -C installer/linux/staged .
 ```
-This is just what `build-linux-installer` automates in CI — there's no
+This is just what the Linux workflow automates in CI (it also copies
+`installer/linux/icons/`, `cdrca.desktop` and `cdrca-mime.xml` into the
+tarball, which is what puts the logo on the desktop) — there's no
 compile step like Inno Setup, it's a plain tarball. See the comments at
 the top of `installer/linux/install.sh` for what it does and doesn't
 try to do (no bundled Rust toolchain, no VS Code registry-key

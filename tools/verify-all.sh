@@ -5,7 +5,11 @@
 # Prerequisites (CI: run these first):
 #   * Rust toolchain           (cargo)
 #   * Node 18+
-#   * `npm install` in:  cli/src/templates/cdrca-runtime
+#   * `npm install` in:  cli
+#                          (provides cli/node_modules/acorn — the `cdrca compile` Rust tests
+#                          symlink it into their fake project and fail with
+#                          "Cannot find module 'acorn'" without it)
+#                        cli/src/templates/cdrca-runtime
 #                        cli/src/templates/cdrca-runtime/Back-end/Transpiler/Plugins/grammar
 #                          (the plugin packager needs `acorn`; its tests fail without it)
 #                        plugins/cdrca-reactive-state

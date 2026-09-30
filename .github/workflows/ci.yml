@@ -37,7 +37,7 @@ jobs:
         run: |
           RT=cli/src/templates/cdrca-runtime
           npm install --no-audit --no-fund --no-save jsdom@24
-          for d in "$RT" "$RT/Back-end/Transpiler/Plugins/grammar" plugins/cdrca-reactive-state plugins/ember plugins/campfire; do
+          for d in cli "$RT" "$RT/Back-end/Transpiler/Plugins/grammar" plugins/cdrca-reactive-state plugins/ember plugins/campfire; do
             (cd "$d" && npm install --no-audit --no-fund)
           done
           (cd "$RT" && npm install --no-audit --no-fund --no-save jsdom@24)

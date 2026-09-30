@@ -3,6 +3,7 @@
   "displayName": "CDRCA",
   "description": "Language support, project scaffolding, and a run button for CDRCA animation projects.",
   "version": "0.1.0",
+  "icon": "icons/cdrca-logo.png",
   "publisher": "islah",
   "repository": {
     "type": "git",

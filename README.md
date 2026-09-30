@@ -1,13 +1,19 @@
 # CDRCA Tooling
 
-A package ecosystem and native-app tooling suite for
-[CDRCA](https://github.com/ISLAH-org/CDRCA), Muhammad Ayyan's
-JavaScript-based animation DSL. This repo is the tooling layer — the CLI,
-package manager, Windows and Linux installers, and VS Code extension —
-**not the CDRCA language itself.** The language's own source, transpiler,
-and authoritative syntax docs live in
-[Ayyan's upstream repo](https://github.com/ISLAH-org/CDRCA); this repo
-never modifies that source, it only installs and runs a local copy of it.
+> **This is not the ISLAH-org CDRCA.** The CDRCA at
+> [ISLAH-org/CDRCA](https://github.com/ISLAH-org/CDRCA) was built by
+> Muhammad Ayyan for programmatic animations. **This project is a
+> completely different language and toolchain** that grew from it. The
+> only thing it relies on from the original is a version of the initial
+> compiler and parser, and full credit for that starting point goes to
+> Muhammad Ayyan. Everything else here (the CLI, the package manager and
+> registry flow, Quark, reactive state, the v2 grammar, Ember, Campfire,
+> the installers and the VS Code extension) is new and maintained by
+> MrMIB. If you are looking for the original animation-scripting CDRCA,
+> use Ayyan's repo; the two are not compatible or interchangeable.
+
+A package ecosystem and native-app tooling suite for CDRCA: the CLI,
+package manager, Windows and Linux installers, and VS Code extension.
 
 ## What is CDRCA?
 
@@ -76,10 +82,10 @@ language's own syntax grammar (`extension/syntaxes/cdrca.tmLanguage.json`):
 
 This repo's job is everything *around* that language: scaffolding
 projects, installing packages/plugins written in it, running them, and
-building them into distributable apps. For the language's full syntax
-reference and runtime behavior, see the
-[upstream CDRCA repo](https://github.com/ISLAH-org/CDRCA) — this repo
-intentionally doesn't duplicate that documentation.
+building them into distributable apps. For syntax, see
+[docs/SYNTAX.md](./docs/SYNTAX.md) and the guides under
+[docs/guides/](./docs/guides). The original ISLAH-org CDRCA's docs
+describe a different language and do not apply here.
 
 ## What's in here
 
@@ -98,7 +104,10 @@ intentionally doesn't duplicate that documentation.
   and optionally the VS Code extension; and the Linux installers:
   native `.deb` and `.rpm` packages (`installer/linux/nfpm.yaml`) plus a
   per-user tarball with `installer/linux/install.sh`, all built by
-  `.github/workflows/linux-installer.yml`. See
+  `.github/workflows/linux-installer.yml`. Every installer carries the
+  CDRCA logo (see [Install](#install)), and
+  `.github/workflows/installers.yml` builds them all in one run into a
+  single `cdrca-installers-all` artifact. See
   [Platform support](#platform-support) below for what differs between
   the two.
 - **`docs/`** — architecture, manifest spec, CLI reference, plugin
@@ -145,7 +154,8 @@ other than the one you're targeting.
 release for your platform from this repo's
 [Releases](../../releases) page.
 
-- **Windows:** `cdrca-installer.exe` — installs the `cdrca` CLI to
+- **Windows:** `cdrca-installer.exe` — the installer itself wears the
+  CDRCA logo (file icon and wizard banner). It installs the `cdrca` CLI to
   PATH, silently sets up a Rust toolchain, registers CDRCA's own icon
   for `.cdrca` files in Explorer, and — if VS Code is detected on your
   machine — offers to install the VS Code extension too (you can still
@@ -155,18 +165,23 @@ release for your platform from this repo's
   - **`.rpm`** (Fedora): `sudo dnf install ./cdrca-<version>-1.x86_64.rpm`
 
     Both install `cdrca` to `/usr/bin` and are upgraded and removed by
-    your package manager. They can't ask questions, so the VS Code
-    extension is left at `/usr/share/cdrca/cdrca-extension.vsix`; install
-    it with `code --install-extension` on that path.
+    your package manager. They also install the CDRCA logo: a "CDRCA"
+    entry in your applications menu and the icon for `.cdrca` files. They
+    can't ask questions, so the VS Code extension is left at
+    `/usr/share/cdrca/cdrca-extension.vsix`; install it with
+    `code --install-extension` on that path.
   - **`cdrca-installer-linux.tar.gz`** — no root needed: extract it and
     run `./install.sh`. Puts `cdrca` on PATH (`~/.local/bin` by default,
-    adding it to your shell rc file if it isn't there already) and, if
-    `code` is on PATH, offers to install the VS Code extension.
+    adding it to your shell rc file if it isn't there already), installs
+    the same logo and menu entry under `~/.local/share`, and, if `code`
+    is on PATH, offers to install the VS Code extension.
 
   All three need **glibc 2.35 or newer** (Ubuntu 22.04+, Debian 12+,
   Fedora 36+). RHEL/Rocky/Alma 9, Ubuntu 20.04 and Debian 11 are not
   supported; the packages refuse to install there rather than fail to
-  start. `SHA256SUMS` on the release lists a checksum for every file.
+  start. `SHA256SUMS` on the release lists a checksum for every file
+  (Windows and Linux together). The same files are also one download in
+  the `cdrca-installers-all` artifact of the "All installers" workflow run.
   See [Platform support](#platform-support) above for what's different
   from the Windows installer.
 

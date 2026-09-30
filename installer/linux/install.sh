@@ -11,8 +11,11 @@
 #   - No registry-key VS Code detection (that's a Windows Credential/
 #     Uninstall-key mechanism with no Linux equivalent) -- this script
 #     just checks whether `code` is on PATH instead.
-#   - No file-association / Explorer icon step -- there's no single
-#     cross-desktop-environment equivalent worth building against.
+#   - The logo IS installed, the freedesktop way (per user, under
+#     ~/.local/share): the launcher icon, a "CDRCA" menu entry, and the
+#     .cdrca file-type icon. That is the Linux counterpart of the Windows
+#     installer's shortcut icon and .cdrca file association. It only sets
+#     icons; nothing is registered as a double-click handler.
 #
 # This script is meant to be run from inside the extracted
 # cdrca-installer-linux.tar.gz (it expects `cdrca` and, optionally,
@@ -57,6 +60,33 @@ case ":${PATH:-}:" in
     fi
     ;;
 esac
+
+# --- logo: launcher icon, menu entry, .cdrca file-type icon ---
+# Optional files: skipped quietly if this script is run without them, and
+# never allowed to fail the install.
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+if [ -d "$SCRIPT_DIR/icons" ]; then
+  for icon in "$SCRIPT_DIR"/icons/cdrca-*.png; do
+    [ -f "$icon" ] || continue
+    size="${icon##*/cdrca-}"; size="${size%.png}"
+    mkdir -p "$DATA_HOME/icons/hicolor/${size}x${size}/apps" "$DATA_HOME/icons/hicolor/${size}x${size}/mimetypes"
+    cp "$icon" "$DATA_HOME/icons/hicolor/${size}x${size}/apps/cdrca.png"
+    cp "$icon" "$DATA_HOME/icons/hicolor/${size}x${size}/mimetypes/text-x-cdrca.png"
+  done
+fi
+if [ -f "$SCRIPT_DIR/cdrca.desktop" ]; then
+  mkdir -p "$DATA_HOME/applications"
+  # Point the launcher at the exact binary we just installed.
+  sed "s|^Exec=.*|Exec=sh -c \"$BIN_DIR/cdrca --help; exec bash\"|" \
+    "$SCRIPT_DIR/cdrca.desktop" >"$DATA_HOME/applications/cdrca.desktop"
+fi
+if [ -f "$SCRIPT_DIR/cdrca-mime.xml" ]; then
+  mkdir -p "$DATA_HOME/mime/packages"
+  cp "$SCRIPT_DIR/cdrca-mime.xml" "$DATA_HOME/mime/packages/cdrca.xml"
+fi
+command -v update-mime-database >/dev/null 2>&1 && update-mime-database "$DATA_HOME/mime" >/dev/null 2>&1 || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DATA_HOME/applications" >/dev/null 2>&1 || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f "$DATA_HOME/icons/hicolor" >/dev/null 2>&1 || true
 
 # --- optional VS Code extension ---
 # Same .vsix the Windows installer offers -- see extension/README.md. The

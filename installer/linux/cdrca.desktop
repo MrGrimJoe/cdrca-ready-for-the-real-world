@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=CDRCA
+GenericName=CDRCA command line
+Comment=CLI, package manager and build tool for the CDRCA animation DSL
+# CDRCA has no window of its own, so this opens a terminal showing `cdrca --help`
+# and leaves the shell open, the same as the Windows Start Menu entry.
+Exec=sh -c "cdrca --help; exec bash"
+Icon=cdrca
+Terminal=true
+Categories=Development;
+Keywords=cdrca;animation;cli;

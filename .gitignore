@@ -1,5 +1,6 @@
 # Rust build output
 cli/target/
+cli/node_modules/
 
 # VS Code extension build output / deps
 extension/node_modules/

@@ -6,6 +6,7 @@ mod js_block_semicolon_patch;
 mod library_stage;
 mod lockfile;
 mod manifest;
+mod mrmib;
 mod npm;
 mod package_stage;
 mod parser_spacing_patch;
@@ -75,6 +76,46 @@ enum Command {
     /// Diagnose your local CDRCA environment: toolchain, login, registry
     /// reachability, local package store health, and VS Code setup
     Doctor,
+    /// Package the current project (or a named installed plugin/library/
+    /// package) into a distributable .mrmib archive
+    Pack {
+        /// Output path (default: <name>-<version>.mrmib in the project root)
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Export a plugin/library/package to .mrmib. With no name, exports
+    /// everything this project has (its own package plus every staged
+    /// plugin/library/package) automatically, into ./exports/
+    Export {
+        /// Name of the specific plugin/library/package to export. Omit to
+        /// export everything.
+        name: Option<String>,
+        /// Output path: a directory for "everything", or the exact file
+        /// path when a name is given (default: <name>-<version>.mrmib in
+        /// the project root)
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Compile a custom grammar-plugin workspace (see PLUGIN-DEVELOPMENT
+    /// docs) into a shippable grammar package, or scaffold a new workspace
+    Compile {
+        #[command(subcommand)]
+        what: CompileTarget,
+    },
+}
+
+#[derive(Subcommand)]
+enum CompileTarget {
+    /// Validate and package everything added in a grammar workspace
+    /// (default location: ./grammar-workspace) into dist/<name>.grammar.json
+    Custom {
+        /// Workspace directory (default: ./grammar-workspace)
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Scaffold a fresh workspace for a new plugin instead of compiling
+        #[arg(long)]
+        init: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -107,7 +148,13 @@ async fn main() -> anyhow::Result<()> {
         Command::Login => commands::login::run()?,
         Command::Logout => commands::login::logout()?,
         Command::Search { query } => commands::misc::search(&query).await?,
-        Command::Info { package } => commands::misc::info(&package).await?,
+        Command::Info { package } => {
+            if package.ends_with(".mrmib") {
+                commands::pack::inspect(std::path::Path::new(&package))?
+            } else {
+                commands::misc::info(&package).await?
+            }
+        }
         Command::Install { spec } => commands::install::run(&spec, &cwd).await?,
         Command::Update { package } => commands::misc::update(&cwd, package.as_deref()).await?,
         Command::Remove { package } => commands::misc::remove(&cwd, &package)?,
@@ -125,6 +172,19 @@ async fn main() -> anyhow::Result<()> {
         },
         Command::Run => commands::run::run(&cwd)?,
         Command::Doctor => commands::doctor::run(&cwd).await?,
+        Command::Pack { out } => commands::pack::run(&cwd, out.as_deref())?,
+        Command::Export { name, out } => match name {
+            Some(n) => commands::export::run_named(&cwd, &n, out.as_deref())?,
+            None => commands::export::run_all(&cwd, out.as_deref())?,
+        },
+        Command::Compile { what } => match what {
+            CompileTarget::Custom { workspace, init } => match init {
+                Some(plugin_name) => {
+                    commands::compile::init(&cwd, &plugin_name, workspace.as_deref())?
+                }
+                None => commands::compile::run(&cwd, workspace.as_deref())?,
+            },
+        },
     }
 
     Ok(())

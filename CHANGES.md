@@ -14,6 +14,53 @@ server, reactive-state, the legacy corpus, the v2 guide examples). Prerequisites
 top of the script. Without `jsdom` the DOM-based test files print `SKIPPED` and the script says so
 in each step's line — that's a weaker check, not a failure.
 
+## README — this is not the ISLAH-org CDRCA
+
+The README now opens by saying this is a different language and toolchain from Muhammad Ayyan's
+ISLAH-org CDRCA, that it only relies on a version of the original compiler and parser, and that
+Ayyan is credited for that starting point. The pointer to the upstream repo for syntax docs is
+replaced with this repo's own. **Still to review:** `LICENSE.md`, `docs/LICENSING.md` and the license
+paragraph near the end of the README still say the language is licensed separately by Ayyan
+upstream; those are your call, so they are untouched.
+
+## Installers — one workflow, one artifact, the logo everywhere
+
+**One workflow builds every installer.** New `.github/workflows/installers.yml` (runs on a `v*` tag
+or manually) calls `release.yml` (Windows) and `linux-installer.yml` (Linux) and gathers the results
+into a single artifact, `cdrca-installers-all`: `cdrca-installer.exe`, `cdrca-win32-x64.exe`, the
+`.deb`, the `.rpm`, `cdrca-installer-linux.tar.gz`, `cdrca-linux-x64`, and one `SHA256SUMS` covering
+all of them. It fails if any of them is missing. On a tag the same set is attached to the release.
+`release.yml` and `linux-installer.yml` no longer publish anything themselves and no longer trigger
+on tag pushes (that would have attached everything twice); they still run on manual dispatch, and
+the Linux one still runs on pull requests. `release.yml` also always uploads `cdrca-win32-x64.exe`
+now (it was tag-only) and checks the tag against the `cli/Cargo.toml` version, as the Linux
+workflow already did.
+
+**The Windows installer said 0.1.0.** `cdrca-installer.iss` hard-coded it while the CLI is 0.2.6.
+The workflow now passes the real version (`/DMyAppVersion`), and the installer's file properties
+carry it (`VersionInfoVersion`).
+
+**The logo, inside and on the installers.**
+- Windows: unchanged, it already had the logo as the installer's own icon, the wizard banners, the
+  Start Menu shortcut, and the `.cdrca` file icon.
+- Linux (new): the `.deb`, `.rpm` and tarball now install the logo too — a launcher icon, a "CDRCA"
+  applications-menu entry, and an icon for `.cdrca` files (MIME type `text/x-cdrca`). New files under
+  `installer/linux/`: `icons/` (48/64/128/256 px, cut from the one real logo by `make-icons.py`),
+  `cdrca.desktop`, `cdrca-mime.xml`, `postremove.sh`. `postinstall.sh` refreshes the desktop caches
+  and never fails an install. The tarball's `install.sh` does the same per user under
+  `~/.local/share`. The CI smoke tests check the icons, launcher and file type after install and
+  that they are gone after removal.
+- The VS Code extension (bundled in every installer) now has the logo as its icon
+  (`extension/icons/cdrca-logo.png`, `"icon"` in `extension/package.json`).
+
+Verified here: the CLI built, `nfpm` built the `.deb` and `.rpm`, the `.deb` installed, put the icons,
+launcher and file type in place, passed `desktop-file-validate`, and removed cleanly; `install.sh` ran
+in a throwaway home; a real `.vsix` packaged with the icon; all four workflows pass `actionlint`.
+**Not run here:** the Inno Setup compile and the Windows job (no Windows), and the `.rpm` install
+(no `rpm`/`dnf`) — the first tag run is their first real test. The license shown in the `.deb`/`.rpm`
+metadata (`IOSL`, in `nfpm.yaml` and `cli/Cargo.toml`) still disagrees with `LICENSE.md` (MrMIB
+License v1.0); left as is, since the CLI's own manifest check expects `IOSL`.
+
 ## Fix — ember, campfire and reactive-state browser scripts are now bundled
 
 `cdrca_bundle.rs` only wrote each of these plugins' `plugin.js`, so their statements compiled but

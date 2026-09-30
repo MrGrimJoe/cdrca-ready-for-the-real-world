@@ -1,8 +1,11 @@
 pub mod build;
+pub mod compile;
 pub mod create;
 pub mod doctor;
+pub mod export;
 pub mod install;
 pub mod login;
 pub mod misc;
+pub mod pack;
 pub mod publish;
 pub mod run;

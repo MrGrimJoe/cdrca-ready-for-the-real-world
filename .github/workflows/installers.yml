@@ -1,0 +1,93 @@
+name: All installers
+
+# Builds EVERY CDRCA installer in one run and gathers them into a single
+# artifact, "cdrca-installers-all", so there is one download for everything:
+#
+#   cdrca-installer.exe                 Windows installer (Inno Setup wizard)
+#   cdrca-win32-x64.exe                 bare Windows binary (used by the npm wrapper)
+#   cdrca_<version>-1_amd64.deb         Debian / Ubuntu
+#   cdrca-<version>-1.x86_64.rpm        Fedora and other RPM distros
+#   cdrca-installer-linux.tar.gz        per-user Linux install (installer/linux/install.sh)
+#   cdrca-linux-x64                     bare Linux binary (used by the npm wrapper)
+#   SHA256SUMS                          checksums of all of the above
+#
+# Every installer carries the CDRCA logo: as the installer's own icon where the
+# format has one (the Windows .exe), and installed for the user (launcher and
+# .cdrca file-type icon on both platforms, plus the VS Code extension's icon).
+#
+# How it runs:
+#   - a tag push (v*) or a manual run builds everything
+#   - on a tag push the same files are also attached to that tag's release
+#   - the two platform workflows (release.yml = Windows, linux-installer.yml =
+#     Linux) are called from here and still keep their own artifacts; they no
+#     longer publish anything themselves, so nothing is attached twice.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+# The called workflows push a debug-log branch on failure and (via this
+# workflow's collect job) attach release assets, so this needs write access.
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows installer
+    uses: ./.github/workflows/release.yml
+
+  linux:
+    name: Linux installers
+    uses: ./.github/workflows/linux-installer.yml
+
+  collect:
+    name: Collect all installers
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cdrca-installer-windows
+          path: all
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-installers
+          path: all
+
+      - name: Check that every installer is present, then checksum them together
+        working-directory: all
+        run: |
+          # The Linux job's own SHA256SUMS only covers Linux; replace it with one
+          # that covers everything in this bundle.
+          rm -f SHA256SUMS
+          missing=0
+          for pattern in cdrca-installer.exe cdrca-win32-x64.exe 'cdrca_*_amd64.deb' 'cdrca-*.x86_64.rpm' cdrca-installer-linux.tar.gz cdrca-linux-x64; do
+            # shellcheck disable=SC2086
+            if ! ls $pattern >/dev/null 2>&1; then
+              echo "::error::missing installer: $pattern"
+              missing=1
+            fi
+          done
+          [ "$missing" = 0 ] || exit 1
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS SHA256SUMS
+          ls -l
+          cat SHA256SUMS
+
+      - name: Upload the combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdrca-installers-all
+          path: all/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach everything to the release
+        # A release needs a tag; manual runs only leave the artifact above.
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: all/*
+          fail_on_unmatched_files: true

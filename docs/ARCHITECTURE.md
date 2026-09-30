@@ -366,7 +366,7 @@ yet verified against what the registry team actually implemented.
 
 The extension (`extension/`) is not published to the VS Code
 Marketplace — it's built into a `.vsix` at CI time
-(`.github/workflows/release.yml`, via `vsce package`) and offered as an
+(`.github/workflows/release.yml`, via `vsce package`; the extension carries the CDRCA logo as its icon, `extension/icons/cdrca-logo.png`) and offered as an
 optional, selectable component in the Inno Setup installer
 (`installer/cdrca-installer.iss`).
 
@@ -393,9 +393,17 @@ same `.vsix`. The tarball's `installer/linux/install.sh` offers to run
 `code --install-extension` too, but detects VS Code by checking `code`
 on `PATH` rather than a registry key — see the comments at the top of
 that script for the other simplifications versus the Inno Setup
-installer (no bundled Rust toolchain install, no file-association step).
-The `.deb`/`.rpm` packages can't prompt, so they install the `.vsix` to
-`/usr/share/cdrca/` and print the command to install it.
+installer (no bundled Rust toolchain install). The `.deb`/`.rpm` packages
+can't prompt, so they install the `.vsix` to `/usr/share/cdrca/` and print
+the command to install it.
+
+Every Linux package also installs the CDRCA logo the freedesktop way: a
+launcher icon and "CDRCA" menu entry, and an icon for `.cdrca` files (MIME
+type `text/x-cdrca`) — the Linux counterpart of the Windows installer's
+shortcut icon and file association. The `.deb`/`.rpm` put these under
+`/usr/share`; the tarball's `install.sh` puts them under `~/.local/share`.
+Like the Windows association, this only sets icons; it registers no
+double-click handler.
 
 ## Building on Linux, and what actually ships there
 

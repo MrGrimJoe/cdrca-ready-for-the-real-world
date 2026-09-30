@@ -1,32 +1,23 @@
 name: Build CDRCA Installers
 
-# NOTE: Linux assets (deb/rpm/tar.gz/cdrca-linux-x64) are built by
-# linux-installer.yml (Ubuntu 22.04, glibc 2.35 floor), not here -- this file is
-# Windows-only now. Both trigger on the same tag and attach to the same release.
+# The WINDOWS installer. Linux (deb/rpm/tar.gz/cdrca-linux-x64) is built by
+# linux-installer.yml (Ubuntu 22.04, glibc 2.35 floor).
 #
-# Runs on every tag push (e.g. v1.2.0) and can be triggered manually.
-# Two independent jobs, each building and packaging its own platform end
-# to end (own Rust build, own .vsix package, own asset upload) rather
-# than sharing artifacts between them -- that keeps either platform free
-# to fail, get re-run, or change its packaging step without touching the
-# other:
+# On a tag push, installers.yml calls both, collects every installer into one
+# "cdrca-installers-all" artifact and attaches them all to the release. This
+# file only BUILDS: run on its own it leaves the "cdrca-installer-windows"
+# artifact, which holds
+#   - cdrca-installer.exe   the interactive Inno Setup installer. It carries the
+#                           CDRCA logo twice over: as the installer's own icon
+#                           and wizard banner, and installed under {app}\assets
+#                           (Start Menu shortcut icon, .cdrca file-type icon).
+#   - cdrca-win32-x64.exe   the bare binary the npm wrapper downloads on postinstall.
 #
-#   - build-windows-installer: produces the interactive Inno Setup
-#     installer.exe (bundles the CLI, a silent Rust toolchain install,
-#     and optionally the VS Code extension), plus the raw
-#     cdrca-win32-x64.exe binary the npm wrapper downloads on postinstall.
-#   - build-linux-installer: produces a cdrca-installer-linux.tar.gz
-#     (the CLI binary + installer/linux/install.sh + the same .vsix,
-#     see that script for why it's simpler than the Windows installer),
-#     plus the raw cdrca-linux-x64 binary for the npm wrapper.
-#
-# Neither job publishes the VS Code extension to the Marketplace --
-# this repo doesn't do that separately, so each platform's .vsix build
-# IS its only distribution path (bundled into that platform's installer).
+# The VS Code extension is not published to the Marketplace by this repo, so
+# each installer bundling its .vsix IS the extension's only distribution path.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch: {}
+  workflow_call: {}
 
 permissions:
   contents: write
@@ -36,6 +27,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version from cli/Cargo.toml
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)"
+          if [ -z "$VERSION" ]; then echo "::error::could not read the version from cli/Cargo.toml"; exit 1; fi
+          # A release tag must match the crate version, or the installer would
+          # be labelled with a version the binary does not report.
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+                echo "::error::tag $GITHUB_REF_NAME does not match cli/Cargo.toml version $VERSION"
+                exit 1
+              fi
+              ;;
+          esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain (for building the CLI itself)
         uses: dtolnay/rust-toolchain@stable
@@ -104,7 +113,7 @@ jobs:
         id: compile_installer
         continue-on-error: true
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\cdrca-installer.iss 2>&1 | Tee-Object -FilePath iscc_output.log
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.version }}" installer\cdrca-installer.iss 2>&1 | Tee-Object -FilePath iscc_output.log
           exit $LASTEXITCODE
         shell: pwsh
 
@@ -126,28 +135,29 @@ jobs:
         run: exit 1
         shell: pwsh
 
-      - name: Rename raw binary for release (platform-suffixed, for the npm wrapper)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Raw binary (platform-suffixed, for the npm wrapper)
         shell: pwsh
         run: Copy-Item installer/staged/cdrca.exe cdrca-win32-x64.exe
 
-      - name: Upload release assets
-        # GitHub Releases requires a tag to attach the release to. Manual
-        # workflow_dispatch runs aren't tied to a tag, so only run this step
-        # on actual tag pushes; manual runs still get the artifact below.
-        # cdrca-win32-x64.exe (plain binary, no installer wizard) is what
-        # the npm wrapper package downloads on postinstall on Windows.
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            installer/output/cdrca-installer.exe
-            cdrca-win32-x64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checks on the built installer
+        shell: pwsh
+        run: |
+          $exe = "installer/output/cdrca-installer.exe"
+          if (-not (Test-Path $exe)) { throw "$exe was not produced" }
+          $item = Get-Item $exe
+          if ($item.Length -lt 1MB) { throw "$exe is only $($item.Length) bytes -- the bundled files are missing" }
+          Write-Host "installer file version: $((Get-Item $exe).VersionInfo.FileVersion)"
+          # The bare binary that ships beside it must report the version we built.
+          $out = & ".\cdrca-win32-x64.exe" --version
+          Write-Host $out
+          if ("$out" -notmatch [regex]::Escape("${{ steps.version.outputs.version }}")) { throw "cdrca-win32-x64.exe reports '$out', expected version ${{ steps.version.outputs.version }}" }
 
-      - name: Upload build artifact (also available on non-tag manual runs)
+      - name: Upload build artifact (the installer and the bare binary)
         uses: actions/upload-artifact@v4
         with:
           name: cdrca-installer-windows
-          path: installer/output/cdrca-installer.exe
+          path: |
+            installer/output/cdrca-installer.exe
+            cdrca-win32-x64.exe
+          if-no-files-found: error
+          retention-days: 14

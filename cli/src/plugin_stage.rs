@@ -22,7 +22,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-const PLUGINS_DIR_REL: &str = "node_modules/cdrca/Back-end/Transpiler/Plugins";
+pub(crate) const PLUGINS_DIR_REL: &str = "node_modules/cdrca/Back-end/Transpiler/Plugins";
 const PLUGIN_LOADER_REL: &str = "node_modules/cdrca/Back-end/Transpiler/plugin.js";
 const PLUGINS_JSON_REL: &str = "node_modules/cdrca/Back-end/Transpiler/Plugins/plugins.json";
 

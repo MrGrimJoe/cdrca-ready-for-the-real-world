@@ -44,7 +44,7 @@ use crate::manifest::Manifest;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-const PACKAGES_DIR_REL: &str = "cdrca_packages";
+pub(crate) const PACKAGES_DIR_REL: &str = "cdrca_packages";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PackageStageOutcome {

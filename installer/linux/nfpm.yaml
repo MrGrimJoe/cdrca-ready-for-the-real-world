@@ -5,6 +5,8 @@
 #   stage/cdrca                 the release binary
 #   stage/LICENSE.md
 #   stage/cdrca-extension.vsix  the VS Code extension
+# plus the logo, launcher and file-type files under installer/linux/ (icons/,
+# cdrca.desktop, cdrca-mime.xml), which nfpm reads straight from the repo.
 # and the environment variable VERSION (from cli/Cargo.toml).
 #
 # Unlike installer/linux/install.sh (per-user, ~/.local), these install
@@ -35,9 +37,33 @@ contents:
     dst: /usr/share/doc/cdrca/LICENSE.md
   - src: stage/cdrca-extension.vsix
     dst: /usr/share/cdrca/cdrca-extension.vsix
+  # --- CDRCA logo: launcher icon and .cdrca file-type icon ---
+  # Same mark the Windows installer uses. The Windows installer also shows it
+  # on the .cdrca file type; here that is text-x-cdrca (see cdrca-mime.xml).
+  - src: installer/linux/icons/cdrca-48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/cdrca.png
+  - src: installer/linux/icons/cdrca-48.png
+    dst: /usr/share/icons/hicolor/48x48/mimetypes/text-x-cdrca.png
+  - src: installer/linux/icons/cdrca-64.png
+    dst: /usr/share/icons/hicolor/64x64/apps/cdrca.png
+  - src: installer/linux/icons/cdrca-64.png
+    dst: /usr/share/icons/hicolor/64x64/mimetypes/text-x-cdrca.png
+  - src: installer/linux/icons/cdrca-128.png
+    dst: /usr/share/icons/hicolor/128x128/apps/cdrca.png
+  - src: installer/linux/icons/cdrca-128.png
+    dst: /usr/share/icons/hicolor/128x128/mimetypes/text-x-cdrca.png
+  - src: installer/linux/icons/cdrca-256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/cdrca.png
+  - src: installer/linux/icons/cdrca-256.png
+    dst: /usr/share/icons/hicolor/256x256/mimetypes/text-x-cdrca.png
+  - src: installer/linux/cdrca.desktop
+    dst: /usr/share/applications/cdrca.desktop
+  - src: installer/linux/cdrca-mime.xml
+    dst: /usr/share/mime/packages/cdrca.xml
 
 scripts:
   postinstall: installer/linux/postinstall.sh
+  postremove: installer/linux/postremove.sh
 
 # The binary is built on Ubuntu 22.04 (glibc 2.35) and links only against
 # glibc (HTTPS is rustls, not OpenSSL). Declare that floor so a package

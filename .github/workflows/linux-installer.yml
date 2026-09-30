@@ -8,7 +8,13 @@ name: Linux installer
 #   SHA256SUMS
 #
 # Every package is installed and removed in a clean container before anything
-# is published. On a tag push the files are attached to that tag's release.
+# is published. Every package also carries the CDRCA logo: the launcher icon,
+# a "CDRCA" menu entry and the .cdrca file-type icon.
+#
+# This workflow only BUILDS and TESTS. Attaching files to a release is done
+# once, for every installer together, by installers.yml (which calls this
+# workflow on a tag push). Run on its own it just leaves the linux-installers
+# artifact.
 #
 # Support floor: the binary is built on Ubuntu 22.04, so it needs glibc 2.35 or
 # newer (Ubuntu 22.04+, Debian 12+, Fedora 36+). RHEL/Rocky/Alma 9 (glibc 2.34),
@@ -16,8 +22,6 @@ name: Linux installer
 # and the "refuses" job below checks that the package managers enforce it.
 
 on:
-  push:
-    tags: ["v*"]
   pull_request:
     paths:
       - "installer/linux/**"
@@ -102,6 +106,9 @@ jobs:
         run: |
           mkdir -p tarball/cdrca-installer-linux
           cp stage/cdrca stage/cdrca-extension.vsix stage/LICENSE.md installer/linux/install.sh tarball/cdrca-installer-linux/
+          # The logo, launcher entry and file type install.sh puts under ~/.local/share.
+          cp installer/linux/cdrca.desktop installer/linux/cdrca-mime.xml tarball/cdrca-installer-linux/
+          cp -r installer/linux/icons tarball/cdrca-installer-linux/icons
           tar -C tarball -czf dist/cdrca-installer-linux.tar.gz cdrca-installer-linux
           cp stage/cdrca dist/cdrca-linux-x64
 
@@ -149,18 +156,28 @@ jobs:
                 apt-get install -y -qq /pkg/cdrca_*_amd64.deb
                 cdrca --version | grep -F "$VERSION"
                 test -f /usr/share/cdrca/cdrca-extension.vsix
+                test -f /usr/share/icons/hicolor/256x256/apps/cdrca.png
+                test -f /usr/share/icons/hicolor/256x256/mimetypes/text-x-cdrca.png
+                test -f /usr/share/applications/cdrca.desktop
+                test -f /usr/share/mime/packages/cdrca.xml
                 apt-get remove -y -qq cdrca
                 hash -r
-                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi'
+                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi
+                if [ -e /usr/share/icons/hicolor/256x256/apps/cdrca.png ]; then echo "the CDRCA logo is still installed after removal"; exit 1; fi'
               ;;
             rpm)
               script='set -eux
                 dnf install -y -q /pkg/cdrca-*.x86_64.rpm
                 cdrca --version | grep -F "$VERSION"
                 test -f /usr/share/cdrca/cdrca-extension.vsix
+                test -f /usr/share/icons/hicolor/256x256/apps/cdrca.png
+                test -f /usr/share/icons/hicolor/256x256/mimetypes/text-x-cdrca.png
+                test -f /usr/share/applications/cdrca.desktop
+                test -f /usr/share/mime/packages/cdrca.xml
                 rpm -e cdrca
                 hash -r
-                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi'
+                if command -v cdrca >/dev/null 2>&1; then echo "cdrca is still installed after removal"; exit 1; fi
+                if [ -e /usr/share/icons/hicolor/256x256/apps/cdrca.png ]; then echo "the CDRCA logo is still installed after removal"; exit 1; fi'
               ;;
             tarball)
               script='set -eux
@@ -169,6 +186,10 @@ jobs:
                 (cd "$HOME/cdrca-installer-linux" && bash ./install.sh </dev/null)
                 "$HOME/.local/bin/cdrca" --version | grep -F "$VERSION"
                 test -f "$HOME/.local/share/cdrca/cdrca-extension.vsix"
+                test -f "$HOME/.local/share/icons/hicolor/256x256/apps/cdrca.png"
+                test -f "$HOME/.local/share/icons/hicolor/256x256/mimetypes/text-x-cdrca.png"
+                grep -F "$HOME/.local/bin/cdrca" "$HOME/.local/share/applications/cdrca.desktop"
+                test -f "$HOME/.local/share/mime/packages/cdrca.xml"
                 grep -F ".local/bin" "$HOME/.bashrc"'
               ;;
           esac
@@ -216,21 +237,3 @@ jobs:
             exit 1
           fi
           echo "refused because of the glibc requirement, as intended"
-
-  publish:
-    name: Attach to release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, smoke, refuses]
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-installers
-          path: dist
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          fail_on_unmatched_files: true

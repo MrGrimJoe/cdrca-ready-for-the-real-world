@@ -12,13 +12,21 @@
 ; "Logo/branding/file-association (additive)" is purely additive.
 
 #define MyAppName "CDRCA"
-#define MyAppVersion "0.1.0"
+; The release workflow passes the real version (cli/Cargo.toml) on the ISCC
+; command line: ISCC /DMyAppVersion=0.2.6 ... The fallback below only applies
+; to a hand-run compile with no /D, so keep it in step with cli/Cargo.toml.
+#ifndef MyAppVersion
+  #define MyAppVersion "0.2.6"
+#endif
 #define MyAppPublisher "ISLAH"
 
 [Setup]
 AppId={{1EE14AE9-B830-4DDF-8787-89498C96AF0E}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+; Shown in the installer .exe's own Properties > Details tab.
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoDescription=CDRCA installer
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\CDRCA
 DefaultGroupName=CDRCA

@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 /// own tests checks that on every `cargo test`, so an edit to one that
 /// forgets the other fails immediately instead of silently drifting.
 pub const BROWSER_REL_PATH_PREFIX: &str = "Transpiler-Plugins/_libraries";
-const LIBRARIES_DIR_REL: &str = "node_modules/cdrca/Front-end/Transpiler-Plugins/_libraries";
+pub(crate) const LIBRARIES_DIR_REL: &str = "node_modules/cdrca/Front-end/Transpiler-Plugins/_libraries";
 const LIBRARIES_JSON_REL: &str = "node_modules/cdrca/Back-end/Transpiler/Plugins/libraries.json";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -94,6 +94,18 @@ pub fn stage_library(
     std::fs::copy(&entry_src, &staged_file).with_context(|| {
         format!("copying {} to {}", entry_src.display(), staged_file.display())
     })?;
+
+    // Also stage the library's own manifest alongside its bundle — mirrors
+    // what `plugin_stage.rs` already does for plugins, and for the same
+    // reason: `libraries.json`'s own entry only carries name/providesFor/
+    // path (enough for `plugin_frontend_patch.rs` to resolve a `@useLib`),
+    // not the full manifest (version, author, license, dependencies, ...).
+    // Without this copy, nothing downstream that needs the real manifest —
+    // e.g. `cdrca export <library>` — has anywhere to read it from once
+    // the package is staged.
+    let manifest_json = serde_json::to_string_pretty(manifest)?;
+    std::fs::write(staged_dir.join("cdrca.json"), manifest_json)
+        .context("writing staged library's cdrca.json")?;
 
     let libraries_json_path = project_root.join(LIBRARIES_JSON_REL);
     let mut entries: Vec<Value> = if libraries_json_path.is_file() {
@@ -277,6 +289,16 @@ mod tests {
 
         let staged = staged_library_dir(dir.path()).join("quark-icons/bundle.js");
         assert!(staged.is_file());
+
+        // Regression: a staged library must carry its own cdrca.json (same
+        // as a staged plugin does) — libraries.json alone only has
+        // name/providesFor/path, not the full manifest.
+        let staged_manifest = staged_library_dir(dir.path()).join("quark-icons/cdrca.json");
+        assert!(staged_manifest.is_file());
+        let parsed: Manifest =
+            serde_json::from_str(&std::fs::read_to_string(&staged_manifest).unwrap()).unwrap();
+        assert_eq!(parsed.name, "quark-icons");
+        assert_eq!(parsed.version, manifest.version);
 
         let libs = read_staged_libraries(dir.path()).unwrap();
         assert_eq!(libs.len(), 1);
