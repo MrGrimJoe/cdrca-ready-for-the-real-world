@@ -152,12 +152,24 @@ jobs:
           Write-Host $out
           if ("$out" -notmatch [regex]::Escape("${{ steps.version.outputs.version }}")) { throw "cdrca-win32-x64.exe reports '$out', expected version ${{ steps.version.outputs.version }}" }
 
+      - name: Flatten installer to repo root (see comment below)
+        shell: pwsh
+        # upload-artifact@v4 preserves each path's directory structure relative
+        # to the shortest common ancestor when multiple paths of different
+        # depths are given in one call -- mixing this nested path with the
+        # already-root-level cdrca-win32-x64.exe silently nested this one
+        # installer/output/cdrca-installer.exe inside the artifact instead of
+        # placing it at the artifact root, so installers.yml's collect job
+        # (which expects everything flat) reported it as entirely missing
+        # even though the file itself built and passed every check above.
+        run: Copy-Item installer/output/cdrca-installer.exe cdrca-installer.exe
+
       - name: Upload build artifact (the installer and the bare binary)
         uses: actions/upload-artifact@v4
         with:
           name: cdrca-installer-windows
           path: |
-            installer/output/cdrca-installer.exe
+            cdrca-installer.exe
             cdrca-win32-x64.exe
           if-no-files-found: error
           retention-days: 14
