@@ -1,3 +1,18 @@
+## 0.2.8 — plugin core-library auto-include, reactive-state expression-compiler fixes
+
+- A plugin's declared `core` library (e.g. `ember-core.js`) is now auto-included and ordered
+  first even when only a different library is explicitly `load`ed — previously `load
+  ember.presets` alone staged `ember-presets.js` by itself, which refuses to run without
+  `ember-core.js` already loaded. Caught by actually running a page, not by compiling source.
+- cdrca-reactive-state's expression compiler: `R` (the runtime alias itself) and reserved-word
+  operators (`new`, `typeof`, `instanceof`, `in`, `void`, `delete`) no longer get mis-rewritten as
+  state reads; multi-character operators (`===`, `&&`, `=>`, etc.) are now tokenized as single
+  units instead of being split with a space injected mid-operator; `bind.list` gained an optional
+  `.property` suffix (`bind.list = users.data`).
+- New test coverage: `quark/tests/` (11 tests), more of grammar's `animations-v2.test.js`, and
+  `tools/docs-reactive-state-check.js` (verifies every example in `docs/REACTIVE-STATE.md` actually
+  runs — wired into `verify-all.sh`).
+
 # What's in this zip
 
 This zip contains three finished, verified phases of the syntax-and-project work described in

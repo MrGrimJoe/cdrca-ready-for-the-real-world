@@ -1,6 +1,6 @@
 {
   "name": "cdrca12",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "CLI wrapper for CDRCA tooling -- downloads the prebuilt cdrca binary from GitHub Releases on install. Windows and Linux.",
   "license": "SEE LICENSE IN LICENSE.md",
   "author": {
