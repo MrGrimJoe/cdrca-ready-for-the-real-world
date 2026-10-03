@@ -1,0 +1,20 @@
+verify-all
+  PASS  rust: cargo test
+  PASS  vocabulary is up to date
+  PASS  grammar plugin tests
+  PASS  quark plugin tests (back-end)
+  PASS  animations plugin (back-end) tests
+  PASS  animations backdrop (front-end) tests
+  PASS  runtime: plugin architecture
+  PASS  runtime: background end to end
+  PASS  project server (page ownership)
+  PASS  ember plugin tests
+  PASS  campfire plugin tests
+  PASS  reactive-state suite
+  PASS  legacy corpus: old files unchanged
+  PASS  v2 guide examples compile
+  PASS  REACTIVE-STATE.md examples actually run
+  FAIL  npm/docs is in sync with docs/
+        out of date: npm/docs/CHANGES.md
+        1 problem(s)
+FAILED
