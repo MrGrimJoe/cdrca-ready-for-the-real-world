@@ -62,6 +62,15 @@ const NAMED_BIND_KINDS = new Set(["class", "style", "attr", "prop"]);
 // why arbitrary local-scoped JS (arrow functions, loops) is out of scope for
 // these mini-expressions on purpose.
 const PASSTHROUGH_IDENTIFIERS = new Set([
+  // The runtime alias itself. Every generated block declares its own
+  // `const R = CDRCA.reactive;`, so a state/computed cell literally named
+  // "R" could never work anyway (it would be shadowed by that const in its
+  // own scope) — "R" can only ever mean the runtime here, never a state
+  // name, which is what makes passing it through unconditionally safe.
+  // Without this, `R.refetch("users")` compiled to the broken
+  // `R.val("R").refetch("users")` (see docs/REACTIVE-STATE.md's own Query
+  // section, which recommends exactly that call from an event handler).
+  "R",
   "true",
   "false",
   "null",
@@ -82,7 +91,44 @@ const PASSTHROUGH_IDENTIFIERS = new Set([
   "parseInt",
   "parseFloat",
   "isNaN",
+  // Reserved-word operators. They take no scope, so they belong on the
+  // supported side of this compiler's line, and because they are reserved
+  // words they can never be a state name — passing them through cannot
+  // shadow anything. Without these, `new Date().getFullYear()` compiled to
+  // `R.val("new") Date().getFullYear()` and crashed the page at load.
+  "new",
+  "typeof",
+  "instanceof",
+  "in",
+  "void",
+  "delete",
 ]);
+
+// The tokenizer emits every punctuation character as its own token and
+// discards whitespace, so `a == 1` arrives as `a`, `=`, `=`, `1` — the same
+// stream as the (invalid) `a = = 1`. Since no valid JS has a space inside
+// one of these operators, it is always safe to glue such a run back
+// together. Longest match first, so `===` is not read as `==` followed by
+// `=`.
+const MULTI_CHAR_OPERATORS = [
+  "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=",
+  "==", "!=", "<=", ">=", "&&", "||", "??", "=>", "++", "--",
+  "+=", "-=", "*=", "/=", "%=", "**", "<<", ">>", "?.",
+];
+
+// If tokens[i..] starts with a multi-character operator, returns it;
+// otherwise null.
+function operatorAt(tokens, i) {
+  for (const op of MULTI_CHAR_OPERATORS) {
+    let ok = true;
+    for (let k = 0; k < op.length; k++) {
+      const t = tokens[i + k];
+      if (!t || t.value !== op[k]) { ok = false; break; }
+    }
+    if (ok) return op;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------
 // Small token-level helpers
@@ -135,6 +181,27 @@ function compileExprTokens(tokens) {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const prev = tokens[i - 1];
+    // A run of punctuation tokens that spells one operator (`=` `=` -> `==`)
+    // is emitted as a single piece, spaced like any other token.
+    const op = isIdentifierLike(t) ? null : operatorAt(tokens, i);
+    if (op === "=>" || (isIdentifierLike(t) && t.value === "function")) {
+      // Documented hard line (docs/REACTIVE-STATE.md#expression-language):
+      // this compiler has no notion of local scope, so a callback's own
+      // parameters would be rewritten into state reads and the emitted JS
+      // would be invalid. Say so at build time instead of shipping a page
+      // that dies at load with an unrelated-looking browser error.
+      throw new Error(
+        "Reactive: arrow functions and function expressions can't be used inside an expression " +
+          "(their parameters would be read as state). Move the logic into a JS { } block as a named " +
+          "function and call it from here — see docs/REACTIVE-STATE.md#expression-language"
+      );
+    }
+    if (op) {
+      if (prev && !noSpaceBefore(op) && !noSpaceAfter(prev.value)) out += " ";
+      out += op;
+      i += op.length - 1;
+      continue;
+    }
     let piece;
     if (isIdentifierLike(t)) {
       const next = tokens[i + 1];
@@ -316,8 +383,21 @@ function parseBindRule(tokens, pos, elementId, p) {
     if (!(tokens[p] && isIdentifierLike(tokens[p]))) {
       throw new Error(`Reactive: expected a state name after 'bind.list =' on #${elementId}`);
     }
-    const stateName = tokens[p].value;
+    let stateName = tokens[p].value;
     p++;
+    // Optional one-level `.property` suffix, so `bind.list = users.data` (a
+    // single state cell holding { data, loading, error } — exactly the
+    // shape R.query()/the Async-state pattern store their result in; see
+    // docs/REACTIVE-STATE.md#query) works the same way `bind.show =
+    // users.loading` already does via the general expression compiler.
+    // bind.list has its own parser (not compileExprTokens) specifically so
+    // it can validate the array/template-id shape up front, so this suffix
+    // is handled here explicitly rather than falling through to that
+    // shared compiler.
+    if (tokens[p] && tokens[p].value === "." && tokens[p + 1] && isIdentifierLike(tokens[p + 1])) {
+      stateName = `${stateName}.${tokens[p + 1].value}`;
+      p += 2;
+    }
     if (!(tokens[p] && tokens[p].value === "using")) {
       throw new Error(
         `Reactive: expected 'using <templateId>' after 'bind.list = ${stateName}' on #${elementId}`

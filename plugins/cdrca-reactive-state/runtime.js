@@ -379,6 +379,16 @@
     const key = bindingKey(containerId, "list");
     disposeBinding(key);
 
+    // An optional one-level `.property` suffix — e.g. "users.data" for the
+    // exact shape R.query()/R.store() leave their result in (a single cell
+    // holding { data, loading, error }; see docs/REACTIVE-STATE.md#query).
+    // The cell itself (the part before the dot) is still what dependency
+    // tracking subscribes to — reading a sub-property of its value doesn't
+    // change which cell needs to be watched for changes.
+    const dotIndex = stateName.indexOf(".");
+    const baseName = dotIndex === -1 ? stateName : stateName.slice(0, dotIndex);
+    const subProperty = dotIndex === -1 ? null : stateName.slice(dotIndex + 1);
+
     const container = document.getElementById(containerId);
     const template = document.getElementById(templateId);
     if (!container) {
@@ -411,7 +421,7 @@
         const c = cells.get(dep);
         if (c) c.subscribers.delete(handler);
       }
-      const result = runTracked(() => val(stateName));
+      const result = runTracked(() => val(baseName));
       currentDeps = result.deps;
       for (const dep of currentDeps) {
         const c = cells.get(dep);
@@ -419,7 +429,7 @@
         c.subscribers.add(handler);
       }
 
-      const list = result.value;
+      const list = subProperty === null ? result.value : result.value && result.value[subProperty];
       if (!Array.isArray(list)) {
         console.error(`Reactive: bind.list on #${containerId} — "${stateName}" is not an array.`);
         return;

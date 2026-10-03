@@ -131,6 +131,44 @@ pub fn patch_generic_plugin_frontends(
         let mut resolutions = Vec::new();
         let mut script_tags = Vec::new();
 
+        // A plugin's "core" library (if its manifest declares one) is an
+        // always-on engine dependency every other one of its libraries
+        // needs loaded first — the same role quark-core.js plays for Quark,
+        // except Quark's is hardcoded directly into the HTML template,
+        // where a generic (ember/cdrca-reactive-state/...) plugin's isn't.
+        // Without this, `load ember.presets` alone staged only
+        // ember-presets.js and never ember-core.js, even though
+        // ember-presets.js itself refuses to run without it ("ember-core.js
+        // must be loaded first") — a real, silent breakage for every
+        // generic plugin shaped this way, caught by actually running a
+        // project's page rather than just compiling its .cdrca source.
+        // Resolved first, unconditionally, so it is always first in
+        // script_tags regardless of `libs`'s (alphabetical, via LibRef's
+        // derived Ord) sort order — correct by luck for
+        // cdrca-reactive-state ("core" < "query" < "store") but not
+        // guaranteed for every plugin name.
+        let already_referenced_core = libs.iter().any(|l| l.library_name == "core");
+        let plugin_declares_core = project_root
+            .join(PLUGINS_DIR_REL)
+            .join(plugin_name)
+            .join("cdrca.json")
+            .is_file()
+            && std::fs::read_to_string(project_root.join(PLUGINS_DIR_REL).join(plugin_name).join("cdrca.json"))
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Manifest>(&raw).ok())
+                .map(|m| m.libraries.contains_key("core"))
+                .unwrap_or(false);
+        if !already_referenced_core && plugin_declares_core {
+            // Only attempted when the manifest actually names a "core"
+            // library — most plugins have none, and that absence is not an
+            // error (resolve_and_stage_one would return Ok(Unresolved) for
+            // it regardless, but checking first avoids pretending this was
+            // ever a resolution attempt worth recording). A plugin that DOES
+            // declare "core" but still fails to resolve it is a real
+            // problem, so that call is `?`-propagated like any other.
+            resolve_and_stage_one(project_root, plugin_name, "core", &staged_libraries, &mut script_tags)?;
+        }
+
         for lib in libs {
             let resolution = resolve_and_stage_one(
                 project_root,
@@ -340,6 +378,90 @@ mod tests {
         assert!(html.contains("Transpiler-Plugins/mathcore/dist-icons.js"));
         let copied = dir.path().join(FRONTEND_PLUGINS_DIR_REL).join("mathcore/dist-icons.js");
         assert!(copied.is_file());
+    }
+
+    #[test]
+    fn a_plugins_declared_core_library_is_auto_included_even_when_not_explicitly_loaded() {
+        // Regression: `load ember.presets` alone staged only
+        // ember-presets.js, never ember-core.js, even though
+        // ember-presets.js itself refuses to run without it ("ember-core.js
+        // must be loaded first") — found by actually running a real page,
+        // not by compiling .cdrca source (which never surfaces a missing
+        // <script> tag). A plugin's "core" library is an always-on engine
+        // dependency, the same role quark-core.js plays for Quark — except
+        // Quark's is hardcoded into the HTML template, so this generic
+        // path never had the same auto-inclusion Quark gets for free.
+        let dir = tempfile::tempdir().unwrap();
+        fake_frontend(dir.path(), "<html><body></body></html>");
+
+        let plugin_dir = dir.path().join(PLUGINS_DIR_REL).join("ember");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("plugin.js"), "module.exports = function(){};").unwrap();
+        std::fs::write(plugin_dir.join("ember-core.js"), "/* core */").unwrap();
+        std::fs::write(plugin_dir.join("ember-presets.js"), "/* presets */").unwrap();
+        let mut libraries = HashMap::new();
+        libraries.insert("core".to_string(), "ember-core.js".to_string());
+        libraries.insert("presets".to_string(), "ember-presets.js".to_string());
+        let manifest = Manifest {
+            name: "ember".to_string(),
+            version: "1.0.0".to_string(),
+            description: "d".to_string(),
+            package_type: PackageType::Plugin,
+            entry: "plugin.js".to_string(),
+            icon: "icon.png".to_string(),
+            author: "a".to_string(),
+            license: "IOSL".to_string(),
+            repository: String::new(),
+            dependencies: HashMap::new(),
+            permissions: Vec::new(),
+            uses: Vec::new(),
+            libraries,
+            provides_for: None,
+        };
+        std::fs::write(plugin_dir.join("cdrca.json"), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+
+        // Only "presets" is referenced by a `load ember.presets` line — the
+        // fix must bring "core" in anyway, and ahead of "presets" in the
+        // output since it's the one ember-presets.js needs loaded first.
+        let mut by_plugin = BTreeMap::new();
+        by_plugin.insert(
+            "ember".to_string(),
+            vec![LibRef { plugin_name: "ember".to_string(), library_name: "presets".to_string() }],
+        );
+
+        let (outcome, _results) = patch_generic_plugin_frontends(dir.path(), &by_plugin).unwrap();
+        assert_eq!(outcome, PluginFrontendPatchOutcome::Applied);
+
+        let html = std::fs::read_to_string(dir.path().join(FRONTEND_INDEX_HTML_REL)).unwrap();
+        assert!(html.contains("ember-core.js"), "core library must be staged even though never explicitly `load`ed");
+        assert!(html.contains("ember-presets.js"));
+        let core_pos = html.find("ember-core.js").unwrap();
+        let presets_pos = html.find("ember-presets.js").unwrap();
+        assert!(core_pos < presets_pos, "core's <script> tag must come before presets', since presets depends on it");
+
+        assert!(dir.path().join(FRONTEND_PLUGINS_DIR_REL).join("ember/ember-core.js").is_file());
+    }
+
+    #[test]
+    fn a_plugin_with_no_declared_core_library_is_unaffected() {
+        // The auto-include only fires when the manifest actually names a
+        // "core" library — most plugins (mathcore/icons in the existing
+        // fixture below) have none, and that must stay a no-op, not an
+        // error or a spurious empty resolution.
+        let dir = tempfile::tempdir().unwrap();
+        fake_frontend(dir.path(), "<html><body></body></html>");
+        stage_fake_plugin_with_library(dir.path(), "mathcore", "icons", "dist-icons.js", "/* icons */");
+
+        let mut by_plugin = BTreeMap::new();
+        by_plugin.insert(
+            "mathcore".to_string(),
+            vec![LibRef { plugin_name: "mathcore".to_string(), library_name: "icons".to_string() }],
+        );
+
+        let (outcome, results) = patch_generic_plugin_frontends(dir.path(), &by_plugin).unwrap();
+        assert_eq!(outcome, PluginFrontendPatchOutcome::Applied);
+        // Exactly the one explicit resolution — no phantom "core" entry.
+        assert_eq!(results[0].resolutions.len(), 1);
     }
 
     #[test]

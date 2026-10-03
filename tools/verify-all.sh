@@ -44,6 +44,7 @@ echo "verify-all"
 step "rust: cargo test"                        bash -c "cd '$ROOT/cli' && cargo test"
 step "vocabulary is up to date"                node tools/generate-vocabulary.js --check
 step "grammar plugin tests"                    bash -c "cd '$PLUG/grammar' && node tests/run.js"
+step "quark plugin tests (back-end)"           bash -c "cd '$PLUG/quark' && node tests/run.js"
 step "animations plugin (back-end) tests"      bash -c "cd '$PLUG/animations' && node tests/run.js"
 step "animations backdrop (front-end) tests"   bash -c "cd '$FE/animations' && node tests/run.js"
 step "runtime: plugin architecture"            node "$RT/tests/plugin-architecture.test.js"
@@ -54,6 +55,7 @@ step "campfire plugin tests"                   bash -c "cd '$ROOT/plugins/campfi
 step "reactive-state suite"                    bash -c "cd '$ROOT/plugins/cdrca-reactive-state' && CDRCA_RUNTIME_PATH='$RT' node tests/run.js"
 step "legacy corpus: old files unchanged"      node tools/corpus-diff.js
 step "v2 guide examples compile"               node tools/docs-v2-check.js
+step "REACTIVE-STATE.md examples actually run" node tools/docs-reactive-state-check.js
 step "npm/docs is in sync with docs/"           node tools/sync-npm-docs.js --check
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "FAILED"
 exit $fail

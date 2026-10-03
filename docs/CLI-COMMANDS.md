@@ -52,6 +52,14 @@ permissions and `uses` hooks are printed prominently.
 cdrca info calculastic
 ```
 
+Also accepts a local `.mrmib` file path directly, reading just its
+manifest without extracting anything — useful for checking what's inside
+a package someone sent you before installing it:
+
+```
+cdrca info ./mathcore-3.1.0.mrmib
+```
+
 ## `cdrca install <package>[@version]`
 
 Resolves via the registry, downloads the release asset directly from
@@ -95,6 +103,20 @@ the built-in UI directive plugin (see
 
 ```
 cdrca install cdrca@latest
+```
+
+**Local files:** `cdrca install <path>.mrmib` (or a plain `<path>.tar.gz`)
+installs directly from a file on disk instead of resolving through the
+registry — no login, no network. Its manifest is read from inside the
+archive, staged exactly like a registry install (same plugin/library/package
+staging rules above), and recorded in `cdrca-lock.json` with `resolved` set
+to `local:<path>` rather than a registry URL, so the lockfile still shows
+honestly where it came from. This is the other half of `cdrca pack`/`cdrca
+export`: what one project packages, another can install right away, with
+no publish step in between.
+
+```
+cdrca install ./mathcore-3.1.0.mrmib
 ```
 
 ## `cdrca update [package]`
@@ -155,6 +177,113 @@ first.
 ```
 cdrca publish
 ```
+
+Publishing only sends the manifest — the registry expects the actual
+release asset (a `.mrmib`, see below) to already be attached to a GitHub
+release at the URL the manifest points to. `cdrca publish` does not build
+or upload that file for you; run `cdrca pack` first and attach its output
+to the release yourself.
+
+## `cdrca pack [--out <path>]`
+
+Packages the current project into a single `.mrmib` archive — the file
+`cdrca install <name>` downloads from a GitHub release, and also a
+complete, self-contained package you can hand to someone directly without
+touching the registry at all. Under the hood it's a gzip'd tar with one
+extra entry at the front (`.mrmib-meta.json` — the manifest plus a
+self-verifying checksum of everything after it), so `cdrca info` or a
+registry crawler can identify what's inside without extracting the whole
+thing, and `cdrca install` can catch a corrupted or tampered file before
+it ever touches your project.
+
+`cdrca pack` validates the manifest the same way `cdrca publish` does,
+plus two checks `publish` doesn't need to make since it never touches the
+files themselves: the manifest's `entry` file must actually exist, and so
+must its `icon` if one is set. Both fail the pack rather than silently
+shipping a package that's missing a file it claims to have — if you don't
+have an icon yet, leave `icon` as `""` rather than pointing it at a file
+that doesn't exist.
+
+What gets included depends on `entry`'s location: if `entry` sits inside a
+subdirectory (e.g. `src/main.cdrca`), that whole directory is walked and
+packed — so a `.cdrca` project that `require`s sibling files under `src/`
+brings them all along automatically. If `entry` is at the project root
+(e.g. `plugin.js`, as most plugins are), only that file is packed — a
+plugin's own `README.md`, `tests/`, or `bin/` scripts sit alongside it in
+the repo but are never part of the shipped package. `icon` and every
+`libraries` bundle are always included regardless of where `entry` lives.
+`node_modules`, `.git`, `target`, `dist`, `build`, and any dotfile
+directory are never packed even if they happen to live under `entry`'s
+directory.
+
+```
+cdrca pack
+cdrca pack --out dist/mathcore.mrmib
+```
+
+Default output filename is `<name>-<version>.mrmib` in the project root.
+
+## `cdrca export [name] [--out <path>]`
+
+Packages an *installed* plugin/library/package (or the current project
+itself) into a `.mrmib`, by name — looking in whichever of this project's
+staging locations actually has it (`node_modules/cdrca/Back-end/.../Plugins/<name>/`,
+`node_modules/cdrca/Front-end/.../_libraries/<name>/`, or
+`cdrca_packages/<name>/`), not the registry or the local package store.
+That matters if you've since removed something from the store but a
+project still has it staged — the staged copy is the one in active use,
+and the one this exports.
+
+```
+cdrca export mathcore
+```
+
+With no name, exports *everything* this project has — its own package (if
+it has a `cdrca.json`) plus every plugin, library, and package currently
+staged here — automatically, no per-item confirmation, into `./exports/`
+by default. One broken item (a manifest that no longer validates, say)
+prints a warning and is skipped rather than stopping the rest.
+
+```
+cdrca export
+cdrca export --out dist/
+```
+
+## `cdrca compile custom`
+
+Compiles a custom grammar-plugin workspace — your own hand-edited copy of
+CDRCA's grammar plugin, the one thing in this CLI with author tooling of
+its own (see [guides/PLUGIN-DEVELOPMENT.md](./guides/PLUGIN-DEVELOPMENT.md)
+for what a "grammar plugin" actually is and why it's different from an
+ordinary `type: "plugin"` package). This command doesn't reimplement
+anything — it's a thin wrapper around the grammar plugin's own
+`workspace.js` tooling, so behavior can never drift between running it
+by hand and running it through `cdrca`.
+
+Compiling diffs your workspace against the real base grammar source and
+enforces, line by line: no edits to shared/base code, only additive
+top-level insertions, only additive registrations, no reaching into
+base-internal names, and no name collisions. Every one of those is a hard
+failure, not a warning — a custom grammar plugin that could edit shared
+parsing behavior underneath every other plugin is exactly what this
+diffing exists to prevent. On success, writes
+`<workspace>/dist/<name>.grammar.json`, which `cdrca export` will pick up
+alongside everything else this project has staged.
+
+```
+cdrca compile custom
+```
+
+Default workspace location is `./grammar-workspace`; override with
+`--workspace <dir>`. Scaffold a fresh one first with:
+
+```
+cdrca compile custom --init my-grammar-plugin
+```
+
+Requires `node_modules/cdrca` to already be installed in this project
+(`cdrca install cdrca`) — the workspace tooling lives inside the runtime
+package, not inside this CLI binary.
 
 ## `cdrca create app <name>`
 

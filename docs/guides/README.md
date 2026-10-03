@@ -14,6 +14,8 @@ that split happens.
 | [SYNTAX.md](../SYNTAX.md) | The new cleaner syntax — `require`, `load`, `import`, `js { }` and Quark element rules with flags (`@nav navbar glass sticky`), what works today, and how errors read |
 | [QUARK-SYNTAX.md](./QUARK-SYNTAX.md) | The `quark` plugin's `@directive` syntax, design families, and the full component reference |
 | [../REACTIVE-STATE.md](../REACTIVE-STATE.md) | `cdrca-reactive-state`'s state/bindings/events, plus `store`/`query` for persistence and async data |
+| [../../plugins/ember/README.md](../../plugins/ember/README.md) | `ember`'s motion/effects system — `fx` directives, the preset/easing registries, stagger and chain orchestration |
+| [../../plugins/campfire/README.md](../../plugins/campfire/README.md) | `campfire`'s branching dialogue system — `speaker`, `say`, `choice`/`option`, typewriter timing |
 | [SYNTAX-STYLE-GUIDE.md](./SYNTAX-STYLE-GUIDE.md) | The rule new statements should follow, so the language doesn't keep drifting in three directions at once |
 | [PLUGIN-DEVELOPMENT.md](./PLUGIN-DEVELOPMENT.md) | Building your own plugin or library — including publishing a library for someone else's plugin |
 
@@ -26,7 +28,13 @@ that split happens.
    a scene.
 4. [../REACTIVE-STATE.md](../REACTIVE-STATE.md) — once you want state,
    data binding, or async data (fetch/cache/Firebase-style sources).
-5. [PLUGIN-DEVELOPMENT.md](./PLUGIN-DEVELOPMENT.md) — only once you want
+5. [../../plugins/ember/README.md](../../plugins/ember/README.md) —
+   once you want real motion (slide/fade/scale presets, easing, stagger
+   across a list) instead of hand-rolled CSS transitions.
+6. [../../plugins/campfire/README.md](../../plugins/campfire/README.md) —
+   once your project needs a character to talk, or a player to make a
+   choice that branches the story.
+7. [PLUGIN-DEVELOPMENT.md](./PLUGIN-DEVELOPMENT.md) — only once you want
    to extend the tooling itself, not just use it. Read
    [SYNTAX-STYLE-GUIDE.md](./SYNTAX-STYLE-GUIDE.md) first if what you're
    building adds new `.cdrca` syntax of its own.

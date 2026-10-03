@@ -156,8 +156,8 @@ Only `bind.value` and `bind.checked` are ever two-way, and only when
 bound to a **bare state name**, not a computed expression:
 
 ```
-@nameInput bind.value = name        ' two-way: typing updates `name`
-@display   bind.value = first + last ' one-way only — nowhere to write back to
+@nameInput bind.value = name         // two-way: typing updates `name`
+@display   bind.value = first + last // one-way only — nowhere to write back to
 ```
 
 Nothing else is two-way. `bind.text`, `bind.attr.*`, etc. are always
@@ -227,9 +227,16 @@ For side effects that shouldn't drive UI updates directly — saving,
 logging, calling out to something else:
 
 ```
+state count = 0
+state todos = []
+
 watch count => console.log(count)
 watch todos => persistTodos()
 ```
+
+(`persistTodos` would be a function defined in a `JS { }` block, the same
+way `removeTodo` is further down this doc — `watch`'s action language is
+the events mini-language, not arbitrary JS, same as `click =>`.)
 
 `watch` uses the same small action language as events. Bindings, not
 watchers, are the mechanism for normal UI reactivity — don't reach for
@@ -239,9 +246,7 @@ plain `bind.text = count` already does that, automatically, for free.
 ## Collections
 
 ```
-state todos = [
-  ' populated at runtime, e.g. via events
-]
+state todos = [] // populated at runtime, e.g. via events
 ```
 
 ```html
@@ -308,14 +313,33 @@ Bindings, `computed`, and the right-hand side of `state` all share a
 small expression compiler. A bare identifier reads a state/computed value
 (`count` becomes `R.val("count")`); a call (`Math.round(x)`) or a member
 access (`.length`) is left as plain JS; string/number literals and the
-arithmetic/comparison operators work as expected.
+arithmetic/comparison operators work as expected — including multi-
+character ones (`==`, `===`, `!=`, `!==`, `>=`, `<=`, `&&`, `||`, `??`,
+`**`), ternaries, and the reserved-word operators `new`, `typeof`,
+`instanceof`, `in`, and `void`:
+
+```
+state clicks = 0
+state items = []
+state selectedValue = "a"
+
+computed label = clicks == 1 ? "1 click" : clicks + " clicks"
+computed isEmpty = items.length == 0
+computed year = new Date().getFullYear()
+computed kind = typeof selectedValue
+```
 
 This is intentionally **not** a JS parser. It has no notion of local
 scope, so it cannot support:
 
 - arrow functions (`.filter(t => t.id !== id)`)
+- function expressions (`.filter(function (t) { ... })`)
 - `for`/`while` loops
 - local `let`/`const`
+
+Using one of these inside a `computed`, `bind`, or event expression is a
+build-time error, not silently broken output — the message points you at
+the `JS { }` workaround below.
 
 That's a hard, deliberate line, not an oversight — teaching this compiler
 real scoping would be most of the way to building a second JS parser, and
@@ -498,10 +522,10 @@ already had what it takes:
 
 ```
 @saveButton button.primary
-@saveButton on:click = R.refetch("users")
+@saveButton click => R.refetch("users")
 ```
 
-(`button.primary` is Quark styling the element; `on:click` is this
+(`button.primary` is Quark styling the element; `click =>` is this
 plugin's own existing event directive. Nothing about `R.query`/
 `R.refetch` required any new `.cdrca` syntax.)
 
@@ -606,11 +630,30 @@ and a computed count — see
 The whole application logic:
 
 ```
+// countRemaining/clearDone are plain functions, attached to `window` so
+// they're reachable both from this file's own expressions (a bare call is
+// left as plain JS — see Expression language, above) and from any inline
+// onclick/onchange in index.html's <template>. This block must come
+// BEFORE anything below that calls them, since everything runs in source
+// order. See Expression language, above, for why `todos.filter(t =>
+// !t.done).length` can't be written directly inside `computed` — the
+// arrow function is exactly the case that line draws.
+JS {
+  window.countRemaining = function (list) {
+    var n = 0;
+    for (var i = 0; i < list.length; i++) if (!list[i].done) n = n + 1;
+    return n;
+  };
+  window.clearDone = function (list) {
+    return list.filter(function (t) { return !t.done; });
+  };
+}
+
 state todos = []
 state nextId = 1
 state newTodoText = ""
 
-computed remaining = todos.filter(t => !t.done).length
+computed remaining = countRemaining(todos)
 
 @newTodoInput bind.value = newTodoText
 
@@ -619,6 +662,7 @@ computed remaining = todos.filter(t => !t.done).length
 @todoList bind.list = todos using todoItemTemplate
 
 @remainingCount bind.text = remaining
+@clearDoneBtn click => todos = clearDone(todos)
 ```
 
 (`removeTodo`/`toggleTodo`, called from plain `onclick`/`onchange`

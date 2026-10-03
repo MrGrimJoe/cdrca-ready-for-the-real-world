@@ -129,10 +129,54 @@ test("object: resolves a known prop name to its full runtime path", () => {
   );
 });
 
-test("object: passes constructor arguments through untouched", () => {
+test("object: a non-color constructor argument passes through untouched", () => {
+  // Only `#hex`-shaped arguments are converted (see the next test) — a
+  // bare number, an identifier, a string, etc. are left exactly as written.
+  assert.strictEqual(
+    desugar("object cube = RotatingCube(someVar, 1)\n"),
+    "use " + PROP_PATH_PREFIX + "RotatingCubeProp(someVar, 1) as cube\n"
+  );
+});
+
+test("object: a `#hex` color argument is converted to the `0xhex` the real constructor expects", () => {
+  // Regression: every built-in prop constructor (RotatingCubeProp,
+  // BouncingSphereProp) takes its color as a raw JS numeric literal
+  // (0xRRGGBB) — but docs/SYNTAX.md's own flagship example writes the CSS-
+  // style `object cube = RotatingCube(#3b82f6, 1)`, and this statement
+  // used to pass that `#3b82f6` straight through unconverted. The
+  // tokenizer splits `#` from the hex digits (same as it does for every
+  // other punctuation character), so the emitted JS was `#3 b82f6` — a
+  // bare `#` followed by a space, a SyntaxError the instant the compiled
+  // program ran. This was never caught because desugar() only checks the
+  // REWRITE, not whether the final compiled JS is valid — see
+  // tools/docs-reactive-state-check.js's file header for the general
+  // version of this gap, found here too.
   assert.strictEqual(
     desugar("object cube = RotatingCube(#ff0000, 1)\n"),
-    "use " + PROP_PATH_PREFIX + "RotatingCubeProp(#ff0000, 1) as cube\n"
+    "use " + PROP_PATH_PREFIX + "RotatingCubeProp(0xff0000, 1) as cube\n"
+  );
+});
+
+test("object: the emitted constructor call is valid, executable JS (not just a plausible-looking rewrite)", () => {
+  // The exact bug the two tests above guard the rewrite step for: this one
+  // checks the thing that actually matters, the real, final compiled
+  // output, the same way a browser would receive it.
+  const out = compile(scene("object cube = RotatingCube(#3b82f6, 1)"));
+  assert.doesNotThrow(
+    () => new Function("ObjectAnimationSystem_INS", "THREE", out),
+    `compiled output must be valid JS, got:\n${out}`
+  );
+  assert.match(String(out), /RotatingCubeProp\(0x3b82f6,\s*1\)/);
+});
+
+test("object: a `#hex` color inside a quoted string argument is left alone", () => {
+  // Defends the "don't touch strings" half of the conversion regex — a
+  // constructor that took a CSS string argument (none currently do, but
+  // the regex must not assume that) should never have its string content
+  // silently rewritten.
+  assert.strictEqual(
+    desugar('object cube = RotatingCube("label #ff0000 here", 1)\n'),
+    "use " + PROP_PATH_PREFIX + 'RotatingCubeProp("label #ff0000 here", 1) as cube\n'
   );
 });
 

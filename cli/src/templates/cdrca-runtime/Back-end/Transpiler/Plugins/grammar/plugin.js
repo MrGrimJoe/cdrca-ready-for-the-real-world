@@ -1252,7 +1252,23 @@ function animationsDeclaration(ctx, unit, text, textStart) {
       const at = textStart + text.indexOf(ctorName, text.indexOf("="));
       throw new GrammarError(ctx, at, ctorName.length, `unknown prop '${ctorName}'${didYouMean(ctorName, names)}`, names.length ? `known props: ${names.join(", ")}` : "");
     }
-    return `use ${PROP_PATH_PREFIX}${full}(${callM[2]}) as ${name}`;
+    // Every built-in prop constructor (RotatingCubeProp, BouncingSphereProp)
+    // takes its color as a raw JS numeric literal (`0xRRGGBB`), the same
+    // convention `scene.background`/`colorValue()` normalize TO internally
+    // for everything else — but unlike those, a prop's constructor args are
+    // passed straight through here with no rewriting at all, so the CSS-
+    // style `#rrggbb` this language's docs actually tell authors to write
+    // (docs/SYNTAX.md: `RotatingCube(#3b82f6, 1)`) compiled to literal,
+    // invalid JS (`#3 b82f6`) — the tokenizer splits `#` from the hex
+    // digits, and a bare `#` is not valid JS on its own. Convert each
+    // standalone `#hex` argument to the `0xhex` the constructor actually
+    // expects; a `#` that appears inside a quoted string argument (an
+    // unlikely but possible second argument) is left untouched.
+    const argsWithColorsConverted = callM[2].replace(
+      /(['"`])(?:\\.|(?!\1).)*\1|#([0-9a-fA-F]{3,8})\b/g,
+      (whole, _quote, hex) => (hex ? "0x" + hex : whole)
+    );
+    return `use ${PROP_PATH_PREFIX}${full}(${argsWithColorsConverted}) as ${name}`;
   }
 
   const propM = /^prop\s+([A-Za-z_$][\w$]*)([\s\S]*)$/.exec(text);

@@ -352,6 +352,29 @@ test("bind.list renders, updates, and removes items by id", () => {
   assert.strictEqual(list.children[0].textContent, "walk dog");
 });
 
+test("bind.list supports a one-level `.property` path (e.g. the R.query()/Store result shape)", () => {
+  // Regression: docs/REACTIVE-STATE.md's Query section shows
+  // `@userList bind.list = users.data using userTemplate`, matching
+  // exactly the { data, loading, error } shape R.query() defines a cell
+  // as — but bind.list's parser only ever accepted a bare identifier, so
+  // this documented example was a build-time error the whole time.
+  const { R, document } = freshRuntime(
+    '<div id="userList"></div><template id="userTemplate"><li><span data-bind-text="name"></span></li></template>'
+  );
+  R.define("users", { loading: false, error: null, data: [{ id: 1, name: "Ada" }, { id: 2, name: "Grace" }] });
+  R.bindList("userList", "users.data", "userTemplate");
+  const list = document.getElementById("userList");
+  assert.strictEqual(list.children.length, 2);
+  assert.strictEqual(list.children[0].textContent, "Ada");
+
+  // The base cell ("users") is still the real dependency — replacing the
+  // whole object re-renders using the new .data, same as a plain bind.list
+  // re-renders when its (non-dotted) state is replaced.
+  R.set("users", { loading: false, error: null, data: [{ id: 3, name: "Only one now" }] });
+  assert.strictEqual(list.children.length, 1);
+  assert.strictEqual(list.children[0].textContent, "Only one now");
+});
+
 test("bind.list reorders existing DOM nodes instead of recreating them", () => {
   const { R, document } = freshRuntime(
     '<div id="list"></div><template id="tpl"><li data-bind-text="text"></li></template>'

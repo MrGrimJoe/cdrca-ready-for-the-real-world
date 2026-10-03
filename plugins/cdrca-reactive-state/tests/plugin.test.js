@@ -210,4 +210,158 @@ test("object literal keys are not mistaken for state reads", () => {
   );
 });
 
+// ---- multi-character operators ------------------------------------------
+// Regression: the tokenizer emits every punctuation character as its own
+// token and drops whitespace, so `a == 1` arrives as `a` `=` `=` `1`. The
+// expression compiler used to re-join those with spaces (`= =`), which is
+// invalid JS and crashed the whole compiled program at load — this had
+// already slipped past once before without a regression test, and did so
+// again; every case below is checked two ways, the exact text AND that it
+// PARSES, specifically so a future string-only check can't let this back in
+// a third time.
+
+function exprOf(source) {
+  const c = code(source);
+  const m = /R\.computed\("x", \(\) => ([\s\S]*)\);$/.exec(c);
+  assert.ok(m, "unexpected shape: " + c);
+  return m[1];
+}
+
+const OPERATOR_CASES = [
+  ["clicks == 1", '(R.val("clicks") == 1)'],
+  ["clicks === 1", '(R.val("clicks") === 1)'],
+  ["clicks != 1", '(R.val("clicks") != 1)'],
+  ["clicks !== 1", '(R.val("clicks") !== 1)'],
+  ["clicks >= 1", '(R.val("clicks") >= 1)'],
+  ["clicks <= 1", '(R.val("clicks") <= 1)'],
+  ["clicks > 1", '(R.val("clicks") > 1)'],
+  ["clicks && flag", '(R.val("clicks") && R.val("flag"))'],
+  ["clicks || 0", '(R.val("clicks") || 0)'],
+  ["flag ?? 5", '(R.val("flag") ?? 5)'],
+  ["clicks ** 2", '(R.val("clicks") ** 2)'],
+];
+
+for (const [expr, expected] of OPERATOR_CASES) {
+  test(`operators: "${expr}" compiles to valid JS`, () => {
+    const out = exprOf(`computed x = ${expr}`);
+    assert.strictEqual(out, expected);
+    assert.doesNotThrow(() => new Function("R", "return " + out), "emitted JS must parse: " + out);
+  });
+}
+
+test('operators: the real ternary used in docs/REACTIVE-STATE.md, "clicks == 1 ? ... : ..."', () => {
+  const out = exprOf('computed x = clicks == 1 ? "1 click" : clicks + " clicks"');
+  assert.strictEqual(out, '(R.val("clicks") == 1 ? "1 click" : R.val("clicks") + " clicks")');
+  assert.doesNotThrow(() => new Function("R", "return " + out));
+});
+
+test("operators: a mixed chain keeps precedence-relevant tokens intact", () => {
+  const out = exprOf("computed x = clicks >= 10 && flag || clicks == 0");
+  assert.strictEqual(out, '(R.val("clicks") >= 10 && R.val("flag") || R.val("clicks") == 0)');
+  assert.doesNotThrow(() => new Function("R", "return " + out));
+});
+
+test("operators: compound assignment still uses the dedicated += path, unaffected by the operator table", () => {
+  assert.strictEqual(
+    code("@inc click => count += 1"),
+    'const R = CDRCA.reactive; R.on("inc", "click", (event) => { R.set("count", R.val("count") + (1)); });'
+  );
+});
+
+// ---- reserved-word operators ----------------------------------------------
+// Regression: `new`, `typeof`, `in`, `instanceof`, `void` were treated as
+// state names and rewritten to R.val("new") etc. They are reserved words, so
+// they can never be a state name and are always safe to pass through.
+
+const KEYWORD_CASES = [
+  ["new Date().getFullYear()", "(new Date().getFullYear())"],
+  ["typeof count", '(typeof R.val("count"))'],
+  ['"a" in obj', '("a" in R.val("obj"))'],
+  ["items instanceof Array", '(R.val("items") instanceof Array)'],
+  ["void 0", "(void 0)"],
+];
+for (const [expr, expected] of KEYWORD_CASES) {
+  test(`keywords: "${expr}" compiles to valid JS`, () => {
+    const out = exprOf(`computed x = ${expr}`);
+    assert.strictEqual(out, expected);
+    assert.doesNotThrow(() => new Function("R", "return " + out), "emitted JS must parse: " + out);
+  });
+}
+
+// ---- bind.list with a dotted (.property) source name ---------------------
+// Regression: `bind.list = users.data using userTemplate` — the exact form
+// docs/REACTIVE-STATE.md's Query section documents for an R.query() result
+// — was a parse error. bind.list has its own hand-rolled parser (not the
+// shared expression compiler bind.show/bind.text use), which only ever
+// accepted a single bare identifier.
+
+test("bind.list: a bare state name (no dot) still works, unchanged", () => {
+  assert.strictEqual(
+    code("@list bind.list = todos using tpl"),
+    'const R = CDRCA.reactive; R.bindList("list", "todos", "tpl");'
+  );
+});
+
+test("bind.list: a one-level dotted path compiles", () => {
+  assert.strictEqual(
+    code("@userList bind.list = users.data using userTemplate"),
+    'const R = CDRCA.reactive; R.bindList("userList", "users.data", "userTemplate");'
+  );
+});
+
+test("bind.list: the error message still names the right thing when 'using' is missing", () => {
+  assert.throws(
+    () => code("@userList bind.list = users.data"),
+    /expected 'using <templateId>' after 'bind.list = users\.data' on #userList/
+  );
+});
+
+// ---- the runtime alias "R" is never mistaken for a state name -----------
+// Regression: `R.refetch("users")` — the exact call docs/REACTIVE-STATE.md's
+// own Query section recommends from an event handler — compiled to
+// `R.val("R").refetch("users")`, because the compiler only special-cased
+// identifiers preceded by "." (the member NAME), never identifiers
+// followed by "." (the member's RECEIVER), unless that receiver happened
+// to be in the fixed PASSTHROUGH_IDENTIFIERS list (which "Math" was, but
+// "R" was not).
+
+test('the runtime alias: "R.refetch(...)" in an event body is passed through, not read as state', () => {
+  assert.strictEqual(
+    code('@saveButton click => R.refetch("users")'),
+    'const R = CDRCA.reactive; R.on("saveButton", "click", (event) => { R.refetch("users"); });'
+  );
+});
+
+test('the runtime alias: "R.get(...)" in a computed expression is passed through', () => {
+  const out = exprOf('computed x = R.get("count")');
+  assert.strictEqual(out, '(R.get("count"))');
+});
+
+// ---- callbacks are a build error, not broken output ------------------------
+// The docs draw a hard line (no local scope => no arrow functions). The
+// compiler must cross that line loudly (a build-time error) rather than
+// silently (parameters read as state, invalid JS emitted, page dies at load).
+
+test("callbacks: an arrow function in an event body is a clear build error", () => {
+  assert.throws(
+    () => code("@b click => items = items.filter(i => i.done)"),
+    /arrow functions and function expressions can't be used inside an expression.*JS \{ \} block/
+  );
+});
+
+test("callbacks: a function expression is a clear build error", () => {
+  assert.throws(
+    () => code("@b click => items = items.filter(function (i) { return i.done; })"),
+    /arrow functions and function expressions can't be used inside an expression/
+  );
+});
+
+test("callbacks: the same error applies in a computed expression", () => {
+  assert.throws(() => code("computed x = items.map(t => t.id)"), /arrow functions/);
+});
+
+test("callbacks: the event arrow itself (`click =>`) is not mistaken for one", () => {
+  assert.doesNotThrow(() => code("@b click => count += 1"));
+});
+
 report();

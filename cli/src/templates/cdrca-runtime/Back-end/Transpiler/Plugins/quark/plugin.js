@@ -94,8 +94,16 @@ function parseUseLib(tokens, p) {
   if (p >= tokens.length || !isIdentifierLike(tokens[p])) {
     throw new Error("Quark: expected a plugin name after '@useLib'");
   }
-  const pluginName = tokens[p].value;
+  // Plugin names may be hyphenated (`cdrca-reactive-state`). The tokenizer
+  // splits those into word / "-" / word (same reason the modifier-name
+  // loop below does this), so join them back into one name before looking
+  // for the "." that starts the library name.
+  let pluginName = tokens[p].value;
   p++;
+  while (p + 1 < tokens.length && tokens[p].value === "-" && isIdentifierLike(tokens[p + 1])) {
+    pluginName += "-" + tokens[p + 1].value;
+    p += 2;
+  }
 
   if (p >= tokens.length || tokens[p].value !== ".") {
     throw new Error("Quark: expected '.<libraryName>' after '@useLib " + pluginName + "'");
@@ -179,3 +187,11 @@ function parseElementDirective(tokens, p) {
 
   return { type: "JS_BLOCK", prams: { code }, newPosition: p };
 }
+
+module.exports.__internals = {
+  quarkCustomRule,
+  parseUseLib,
+  parseElementDirective,
+  isIdentifierLike,
+  isNewlineToken,
+};
