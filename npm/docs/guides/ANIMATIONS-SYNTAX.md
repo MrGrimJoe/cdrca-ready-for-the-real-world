@@ -53,12 +53,29 @@ number, could be more.
 
 ```
 object ball1 = BouncingSphere()
-object cube = RotatingCube(0xff0000, 1)
+object cube = RotatingCube(#3b82f6, 1)
 ```
 
 `<name>` is required — that's the name you refer to this instance by
-everywhere else in the file. Hex color literals like `0xff0000` work
-correctly as constructor arguments.
+everywhere else in the file. A CSS-style hex color like `#3b82f6` works
+correctly as a constructor argument — it's converted to the `0xRRGGBB`
+numeric literal the actual prop constructor expects, so you never need
+to write `0x...` by hand (though it still works directly too, since it's
+already valid JS as written).
+
+**Every scene needs at least one `object`.** The renderer's per-frame
+animation loop indexes into a per-scene object list unconditionally, so a
+scene with none — e.g. a page that's pure Quark/reactive-state UI with no
+visuals of its own — throws as soon as the page loads, not at compile
+time. If your page has nothing to actually animate, declare one object
+anyway and place it off-screen or behind other content:
+
+```
+object _keepAlive = BouncingSphere()
+```
+
+This is a real, current engine requirement, not a style recommendation —
+there is currently no way to opt out of it.
 
 ## Declaring what an action does: `action`
 

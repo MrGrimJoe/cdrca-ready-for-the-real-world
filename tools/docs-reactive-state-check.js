@@ -29,6 +29,16 @@ const ROOT = path.join(__dirname, "..");
 const { fencedBlocks, looksLikeCdrca } = require("./corpus-diff.js");
 const transpiler = require(path.join(ROOT, "cli", "src", "templates", "cdrca-runtime", "Back-end", "Transpiler", "index"));
 const RUNTIME_SRC = fs.readFileSync(path.join(ROOT, "plugins", "cdrca-reactive-state", "runtime.js"), "utf8");
+// store/query are separate opt-in library bundles (@useLib
+// cdrca-reactive-state.store / .query — see docs/PLUGIN-LIBRARIES.md),
+// not part of runtime.js itself; loading only runtime.js is why `store`/
+// `query` statement examples failed with "R.store is not a function" the
+// first time this checker ran against them. Both attach onto the same
+// CDRCA.reactive object runtime.js creates, so load order matters: core
+// first, same as plugin_frontend_patch.rs's own forced core-first script
+// ordering for a real served page.
+const STORE_SRC = fs.readFileSync(path.join(ROOT, "plugins", "cdrca-reactive-state", "reactive-state-store.js"), "utf8");
+const QUERY_SRC = fs.readFileSync(path.join(ROOT, "plugins", "cdrca-reactive-state", "reactive-state-query.js"), "utf8");
 
 const FILE = "docs/REACTIVE-STATE.md";
 
@@ -56,6 +66,8 @@ function freshSandbox() {
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);
   new vm.Script(RUNTIME_SRC, { filename: "runtime.js" }).runInContext(ctx);
+  new vm.Script(STORE_SRC, { filename: "reactive-state-store.js" }).runInContext(ctx);
+  new vm.Script(QUERY_SRC, { filename: "reactive-state-query.js" }).runInContext(ctx);
   return ctx;
 }
 

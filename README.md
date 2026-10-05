@@ -17,9 +17,18 @@ package manager, Windows and Linux installers, and VS Code extension.
 
 ## What is CDRCA?
 
-CDRCA is a small DSL for describing animation scenes: you declare a
-scene, bring in objects, and drive them with actions. A CDRCA source file
-(`.cdrca`) scaffolded by this tooling looks like this:
+CDRCA started as a DSL for describing animation scenes, and that
+capability is still real and fully working — but the language and the
+ecosystem around it have grown well past that. A current project
+typically reaches for CDRCA not to script a 3D scene, but to build an
+actual app: real UI components, real client-side state, real motion on
+ordinary page elements, branching dialogue, and a real Python backend —
+each a one-line directive instead of hand-written boilerplate. The 3D
+scene/prop/action system below still works exactly as shown and is worth
+knowing, but skip straight to the plugin list after it if you're building
+an app rather than an animation.
+
+A CDRCA source file (`.cdrca`) scaffolded by this tooling looks like this:
 
 ```
 !--- SCENE Main :: Bouncing balls demo ---
@@ -28,34 +37,74 @@ action bounce1 stay=2000ms lerp=500ms { ball1.modifyMesh("") }
 !---END---
 ```
 
-A few things you can see directly from that example and from the
-language's own syntax grammar (`extension/syntaxes/cdrca.tmLanguage.json`):
+A few things you can see directly from that example and from the full
+language overview in
+[docs/SYNTAX.md](./docs/SYNTAX.md#the-whole-language-at-a-glance):
 
 - A scene is bounded by a `!--- ... ---` / `!---END---` marker pair.
-- `use <path> as <name>` pulls in an object (here, a prop from CDRCA's
-  built-in animation-system namespace) under a local alias.
-- `add new action <name> <args...>` declares an action; `def ACTION
-  <name> <target> <verb> <args>` defines what it actually does.
+- `object <name> = <Ctor>(<args>)` brings in an object — here, a prop
+  from CDRCA's built-in animation-system namespace — under a local name;
+  `action <name> [stay=…ms] [lerp=…ms] { … }` drives it over time. A
+  CSS-style `#rrggbb` color (not a raw `0x` number) works directly as a
+  constructor argument. **Every scene needs at least one `object`**, even
+  a purely cosmetic one placed off-screen, if the rest of the page is
+  plain UI with nothing to animate — the renderer's frame loop expects
+  one; see [docs/guides/ANIMATIONS-SYNTAX.md](./docs/guides/ANIMATIONS-SYNTAX.md).
+- The same plugin also provides **`background [<elementId>] [from
+  "<file>.cdrca"]`** — a canvas-backed animated backdrop behind the whole
+  page or one element, CSS-sized and clipped automatically — which is the
+  animations plugin's other, increasingly more common use: motion behind
+  ordinary content rather than a 3D scene as the whole page.
 - CDRCA also has a plugin system with its own DSL syntax —
   `@requires`, `@syntaxPlugin` directives, and inline
   `plugin <name> scope <scope> trusted <bool> { ... }` blocks — for
   hooking into the transpiler pipeline. See
   [docs/PLUGIN-PERMISSIONS.md](./docs/PLUGIN-PERMISSIONS.md) for what a
   plugin is allowed to do and how the CLI surfaces that to you.
-- This tooling also ships **Quark**, a built-in library of prebuilt UI
-  components applied with a one-line directive —
-  `@sidebar sidebar.closable.edgy = value` — instead of hand-coding the
-  component. Every `cdrca create app` / `cdrca install cdrca` stages it
-  into your project automatically. See [docs/QUARK.md](./docs/QUARK.md)
-  — including an important current caveat about what's actually active
-  yet.
-- **`cdrca-reactive-state`** — a small ecosystem plugin (not built-in
-  like Quark; `cdrca install cdrca-reactive-state` to add it to a
-  project) that adds reactive state + DOM data-binding: `state count = 0`,
-  `@countText bind.text = count`, `@increment click => count += 1`. See
+
+### The plugin ecosystem — what most real projects actually build with
+
+- **Quark** (built-in) — a library of prebuilt UI components applied
+  with a one-line directive instead of hand-coded markup/CSS: navbars,
+  sidebars, buttons, forms, modals, toasts, and more, with per-project
+  style families (`quark.family = soft`). `@sidebar
+  sidebar.closable.edgy = value` is the whole component. Staged into
+  every project automatically by `cdrca create app` / `cdrca install
+  cdrca` — no separate install step. See
+  [docs/guides/QUARK-SYNTAX.md](./docs/guides/QUARK-SYNTAX.md) for the
+  full component reference and [docs/QUARK.md](./docs/QUARK.md) for how
+  it's wired in.
+- **`cdrca-reactive-state`** (`cdrca install cdrca-reactive-state`) —
+  reactive state and DOM data-binding with no virtual DOM and no
+  framework: `state count = 0`, `@countText bind.text = count`,
+  `@increment click => count += 1`. Also adds `store` (state that
+  survives a reload — `store cart persist=local = []`) and `query`
+  (a `loading`/`data`/`error` fetch wrapper with caching and
+  auto-refetch — `query users cache=60s = fetch("/api/users").then(r =>
+  r.json())`), both real one-line `.cdrca` statements, not hand-written
+  `fetch`/`localStorage` code. See
   [docs/REACTIVE-STATE.md](./docs/REACTIVE-STATE.md), and
   [`plugins/cdrca-reactive-state/`](./plugins/cdrca-reactive-state) for
   the plugin's own source, tests, and a runnable todo-app example.
+- **Ember** (`cdrca install ember`) — real motion on ordinary page
+  elements: preset animations, easing, stagger and chained sequences,
+  applied the same one-line way as everything else —
+  `@heroCard fx slide-up smooth distance=40px duration=600ms`. See
+  [`plugins/ember/README.md`](./plugins/ember/README.md).
+- **Campfire** (`cdrca install campfire`) — branching dialogue and
+  visual-novel-style scenes: speakers, typewriter-timed lines, and
+  player choices that branch the story —
+  `speaker aria name="Aria" color=#ffcc66`, `say aria "Sit, if you
+  want." wait=2000ms`, `choice aria "How do you answer?" { option "..."
+  signal=stayFriendly }`. See
+  [`plugins/campfire/README.md`](./plugins/campfire/README.md).
+- **[pythonmaster](https://github.com/MrGrimJoe/pythonmaster)**
+  (`cdrca install pythonmaster`, separate repo) — a real Python/FastAPI
+  backend, declared from `.cdrca` itself: a `pythonapi` statement for
+  backend API calls, plus a companion CLI (`bin/pythonmaster.js`) that
+  scaffolds and runs an actual FastAPI project alongside your CDRCA app.
+  Doesn't modify the CDRCA compiler or CLI — a real third-party plugin
+  built entirely on the same mechanisms every plugin here uses.
 - **`@useLib <plugin>.<library>`** — how a `.cdrca` file opts into one
   specific optional bundle from a plugin (e.g. `@useLib
   quark.components`) instead of every plugin shipping everything it has

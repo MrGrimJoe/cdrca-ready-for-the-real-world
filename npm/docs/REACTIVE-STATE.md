@@ -446,27 +446,44 @@ with the bookkeeping done for you.
 
 ## Store
 
-`@useLib cdrca-reactive-state.store` adds one call,
-`R.store(name, initial, { persist, ttl })`, that behaves exactly like
-`define()` except it can also survive a page reload:
+`store <name> [persist=local|session|memory] [ttl=<duration>] = <initial>` is a
+real `.cdrca` statement (part of the core v2 grammar, not this plugin —
+see `docs/SYNTAX.md`), and the way to reach for this day to day:
 
-```js
-R.store("cart", [], { persist: "local" });          // survives closing the tab
-R.store("draftText", "", { persist: "session" });   // survives a refresh, not a new tab
-R.store("authToken", null, { persist: "local", ttl: 3600000 }); // expires after 1 hour
 ```
+store cart persist=local = []            // survives closing the tab
+store draftText persist=session = ""     // survives a refresh, not a new tab
+store authToken persist=local ttl=1h = null  // expires after 1 hour
+```
+
+`ttl` takes a duration the same way `stay=`/`lerp=` do elsewhere in this
+language (`500ms`, `1h`, `30s`); the compiled call always receives a
+plain millisecond number.
+
+**A value with no `persist` option** behaves exactly like `state` — so
+`store cart = []` with no modifiers is a perfectly normal way to declare
+state, and you only add `persist` once you actually decide something
+needs to survive a reload, without changing anything else about how you
+use it. `persist=memory` is the same no-op behavior spelled out
+explicitly, for symmetry with the other two values rather than a
+meaningfully different third option.
 
 Every `set()`/`update()` on a stored name writes through automatically —
 there's nothing else to call. This is built entirely on `subscribeAll()`
 (see below), not a separate mechanism, so it composes with everything
 else in this plugin for free: a stored value is a completely normal
 reactive cell, bindable, watchable, computed-from, exactly like one made
-with plain `define()`.
+with plain `state`.
 
-**A value with no `persist` option** behaves exactly like `define()` — so
-you can reach for `R.store()` as your default and only add `persist`
-once you actually decide something needs to survive a reload, without
-changing anything else about how you use it.
+**What `store` actually compiles to**, for anyone extending this plugin
+or just curious — `R.store(name, initial, { persist, ttl })`, callable
+directly from a `JS { }` block the same way (both forms end up identical;
+`store` is sugar, not a separate mechanism):
+
+```js
+R.store("cart", [], { persist: "local" });
+R.store("authToken", null, { persist: "local", ttl: 3600000 });
+```
 
 A corrupted or expired persisted entry falls back to your `initial`
 value rather than throwing on page load — a bad localStorage entry
@@ -474,13 +491,14 @@ should never be why your page fails to render.
 
 ## Query
 
-`@useLib cdrca-reactive-state.query` adds `R.query`, `R.refetch`, and
-`R.registerSource` — a reactive wrapper around exactly the `loading`/
-`data`/`error` pattern from **Async state** above, plus caching and
-automatic re-fetching:
+`query <name> [from=<source>] [cache=<duration>] [depends=[<names>]] =
+<fetcher>` is a real `.cdrca` statement (core v2 grammar, same family as
+`store` above) — a reactive wrapper around exactly the `loading`/`data`/
+`error` pattern from **Async state** above, plus caching and automatic
+re-fetching, with nothing to call from a `JS {}` block for the plain case:
 
-```js
-R.query("users", () => fetch("/api/users").then(r => r.json()));
+```
+query users = fetch("/api/users").then(r => r.json())
 ```
 
 ```
@@ -500,19 +518,26 @@ compiles to. One object-valued cell is what makes `users.loading` read
 naturally in a directive.
 
 **Re-fetching when something else changes**, without wiring a `watch()`
-yourself:
+yourself — `depends=[<names>]` takes a bracketed list of bare state names
+(not quoted strings):
 
-```js
-R.query("filteredUsers", () => fetchFiltered(R.get("searchText")), {
-  dependsOn: ["searchText"],
-});
+```
+state searchText = ""
+JS {
+  function fetchFiltered(q) { return fetch("/api/users?q=" + q).then(r => r.json()); }
+}
+query filteredUsers depends=[searchText] = fetchFiltered(R.get("searchText"))
 ```
 
 **Caching**, so a manual `R.refetch(name)` doesn't hit the network if the
-last fetch is still fresh:
+last fetch is still fresh — `cache=` takes a duration the same way
+`store`'s `ttl=` does:
+
+```
+query users cache=60s = fetch("/api/users").then(r => r.json())
+```
 
 ```js
-R.query("users", () => fetch("/api/users").then(r => r.json()), { cacheTime: 60000 });
 R.refetch("users");              // skipped if fetched within the last 60s
 R.refetch("users", { force: true }); // always re-fetches
 ```
@@ -532,10 +557,14 @@ plugin's own existing event directive. Nothing about `R.query`/
 **Swapping in Firebase, or your own live server, later:** `R.query()`
 doesn't know anything about REST specifically — `R.registerSource(name,
 { get(config) })` is the whole adapter interface, and a plain `fetch`
-adapter is the only one built in:
+adapter is the only one built in. `source <name> = <adapter>` is the
+`.cdrca` statement form of registering one (same family as `store`/
+`query`); `from=<name>` on a `query` statement is how you then use it —
+after `from=`, `=` takes a plain config object (what the source's
+`get(config)` receives), not a fetcher expression:
 
-```js
-R.query("users", { source: "fetch", url: "/api/users" }); // the built-in shorthand
+```
+query users from=fetch = { url: "/api/users" }   // the built-in shorthand
 ```
 
 A Firebase (or Supabase, or a hand-rolled WebSocket server) adapter is
@@ -545,13 +574,20 @@ ordinary third-party library against this same registry — see
 not something baked into this plugin or requiring any SDK as a
 dependency here:
 
-```js
-// a hypothetical reactive-state-firebase library, once installed:
-R.registerSource("firebase", {
-  get(config) { return firebaseGet(config.path); },
-});
-R.query("users", { source: "firebase", path: "/users" });
 ```
+// a hypothetical reactive-state-firebase library would define something
+// shaped like this (the real adapter would call the Firebase SDK, not
+// return a hardcoded value) and a consuming project would then write:
+JS {
+  window.firebaseAdapter = { get: function (config) { return { path: config.path, data: [] }; } };
+}
+source firebase = firebaseAdapter
+query users from=firebase = { path: "/users" }
+```
+
+(`firebaseAdapter` would be a plain `{ get(config) }` object, defined in
+a `JS { }` block or brought in by that library — `source`'s right-hand
+side is any expression, same as `store`'s.)
 
 ## Storage integration (extension point)
 
